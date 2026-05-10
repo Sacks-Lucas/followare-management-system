@@ -1088,8 +1088,26 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
           setNovedades((prev) => [novedadExtra, ...prev])
         }
       }
+
+      // Auto-generate novedad for insufficient hours worked (ausencia/mediaAusencia)
+      if (newFichada.tipo === "salida") {
+        const allFichadas = [...fichadas, newFichada]
+        const novedadAusencia = checkUnderHoursWorked(newFichada.empleadoId, newFichada.fecha, allFichadas)
+        if (novedadAusencia) {
+          // Verificar si ya existe una novedad de ausencia para este empleado en esta fecha
+          const novedadExistente = novedades.find(
+            n => n.empleadoId === newFichada.empleadoId && 
+                 n.fecha === newFichada.fecha && 
+                 (n.tipo === "ausencia" || n.tipo === "mediaAusencia")
+          )
+          
+          if (!novedadExistente) {
+            setNovedades((prev) => [novedadAusencia, ...prev])
+          }
+        }
+      }
     },
-    [interpretarFichada]
+    [interpretarFichada, employees, turnos, checkUnderHoursWorked, fichadas, novedades]
   )
 
   const addFichadasMasivas = useCallback(
@@ -1134,12 +1152,38 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
         }
       })
 
+      // Combinar fichadas existentes con las nuevas para verificar ausencias
+      const allFichadas = [...fichadas, ...nuevasFichadas]
+
+      // Verificar ausencias por horas insuficientes para cada empleado que tenga fichadas nuevas
+      const empleadosConFichadasNuevas = [...new Set(nuevasFichadas.map(f => f.empleadoId))]
+      
+      empleadosConFichadasNuevas.forEach(empleadoId => {
+        const fechasUnicas = [...new Set(nuevasFichadas.filter(f => f.empleadoId === empleadoId).map(f => f.fecha))]
+        
+        fechasUnicas.forEach(fecha => {
+          const novedadAusencia = checkUnderHoursWorked(empleadoId, fecha, allFichadas)
+          if (novedadAusencia) {
+            // Verificar si ya existe una novedad de ausencia para este empleado en esta fecha
+            const novedadExistente = [...novedades, ...nuevasNovedades].find(
+              n => n.empleadoId === empleadoId && 
+                   n.fecha === fecha && 
+                   (n.tipo === "ausencia" || n.tipo === "mediaAusencia")
+            )
+            
+            if (!novedadExistente) {
+              nuevasNovedades.push(novedadAusencia)
+            }
+          }
+        })
+      })
+
       setFichadas((prev) => [...nuevasFichadas, ...prev])
       if (nuevasNovedades.length > 0) {
         setNovedades((prev) => [...nuevasNovedades, ...prev])
       }
     },
-    [interpretarFichada, employees, turnos]
+    [interpretarFichada, employees, turnos, checkUnderHoursWorked, fichadas, novedades]
   )
 
   const deleteFichada = useCallback((id: string) => {

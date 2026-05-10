@@ -68,6 +68,7 @@ export function CierreMensualView() {
   } = useLMSData()
 
   const currentDate = new Date()
+  const years = Array.from({ length: 5 }, (_, i) => currentDate.getFullYear() - i)
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth())
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear())
   const [periodoTipo, setPeriodoTipo] = useState<PeriodoTipo>("mensual")
@@ -250,7 +251,54 @@ export function CierreMensualView() {
     document.body.removeChild(link)
   }
 
-  const years = Array.from({ length: 5 }, (_, i) => currentDate.getFullYear() - i)
+  const formatDisplayDate = (value?: string): string => {
+    if (!value) return ""
+    const normalized = normalizeDateString(value)
+    if (!normalized) return value
+    const [year, month, day] = normalized.split("-")
+    return `${day}/${month}/${year}`
+  }
+
+  const normalizeDateString = (value: string): string | undefined => {
+    const rawValue = value.trim()
+    if (!rawValue) return undefined
+
+    const isoMatch = /^\d{4}-\d{2}-\d{2}$/.test(rawValue)
+    if (isoMatch) return rawValue
+
+    const parts = rawValue.split(/[\/\-]/).map((part) => part.trim())
+    if (parts.length === 3) {
+      let day = parts[0]
+      let month = parts[1]
+      let year = parts[2]
+
+      if (year.length === 2) year = `20${year}`
+
+      if (parts[0].length === 4) {
+        year = parts[0]
+        month = parts[1]
+        day = parts[2]
+      } else if (parts[2].length === 4) {
+        const first = Number(parts[0])
+        const second = Number(parts[1])
+        if (second > 12) {
+          day = parts[1]
+          month = parts[0]
+        } else {
+          day = parts[0]
+          month = parts[1]
+        }
+      }
+
+      const parsed = new Date(`${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}T00:00:00`)
+      return isNaN(parsed.getTime())
+        ? undefined
+        : `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`
+    }
+
+    const parsed = new Date(rawValue)
+    return isNaN(parsed.getTime()) ? undefined : parsed.toISOString().split("T")[0]
+  }
 
   return (
     <div className="flex gap-6">
@@ -763,37 +811,28 @@ export function CierreMensualView() {
                 </p>
               ) : (
                 <div className="space-y-1 max-h-[200px] overflow-y-auto">
-                  {selectedEmployeeFichadas.slice(0, 15).map((fichada) => (
+                  <div className="grid grid-cols-[120px_90px_100px_90px] gap-2 px-2 pb-2 text-xs uppercase tracking-wide text-muted-foreground border-b">
+                    <span>Fecha</span>
+                    <span>Hora</span>
+                    <span>Tipo</span>
+                    <span>Estado</span>
+                  </div>
+                  {selectedEmployeeFichadas.slice(0, 20).map((fichada) => (
                     <div
                       key={fichada.id}
-                      className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted/50"
+                      className="grid grid-cols-[120px_90px_100px_90px] gap-2 items-center py-2 px-2 text-sm border-b last:border-0"
                     >
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono text-muted-foreground w-[65px]">
-                          {new Date(fichada.fecha).toLocaleDateString("es-AR", {
-                            day: "2-digit",
-                            month: "2-digit",
-                          })}
-                        </span>
-                        <span className="text-sm font-mono">{fichada.hora}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge
-                          variant="outline"
-                          className={`text-xs ${
-                            fichada.tipo === "entrada"
-                              ? "border-green-300 text-green-700"
-                              : fichada.tipo === "salida"
-                              ? "border-red-300 text-red-700"
-                              : "border-amber-300 text-amber-700"
-                          }`}
-                        >
-                          {fichada.tipo}
-                        </Badge>
-                        {fichada.esTardanza && (
-                          <AlertTriangle className="h-3 w-3 text-amber-500" />
-                        )}
-                      </div>
+                      <span className="text-muted-foreground">{formatDisplayDate(fichada.fecha)}</span>
+                      <span className="font-mono">{fichada.hora}</span>
+                      <Badge variant="outline" className="text-xs">
+                        {fichada.tipo === "entrada" ? "Entrada" : fichada.tipo === "salida" ? "Salida" : fichada.tipo}
+                      </Badge>
+                      <Badge
+                        variant={fichada.esTardanza ? "destructive" : "secondary"}
+                        className="text-xs"
+                      >
+                        {fichada.esTardanza ? "Tarde" : "Normal"}
+                      </Badge>
                     </div>
                   ))}
                 </div>
