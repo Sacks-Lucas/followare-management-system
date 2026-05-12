@@ -623,7 +623,7 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
     }
     setIsLoaded(true)
   }, [])
-  localStorage.clear()
+  //localStorage.clear()
   /*borrar hasta aca*/
 
   // Update employee turno status
