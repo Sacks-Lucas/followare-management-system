@@ -45,6 +45,7 @@ import {
   Download,
   Info,
 } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
 import {
   Dialog,
   DialogContent,
@@ -264,6 +265,30 @@ export function EmployeesView() {
   const [selectedRotativoTurnos, setSelectedRotativoTurnos] = useState<string[]>([])
   const [turnoTipo, setTurnoTipo] = useState<"fijo" | "rotativo">("fijo")
   const [fechaBaja, setFechaBaja] = useState(todayLocalISODate())
+  const { toast } = useToast()
+
+  const showCreatedCredentialsToast = (createdEmployees: Employee | Employee[]) => {
+    const items = Array.isArray(createdEmployees) ? createdEmployees : [createdEmployees]
+    if (items.length === 0) return
+
+    const description = (
+      <div className="grid gap-1">
+        {items.slice(0, 5).map((employee) => (
+          <div key={employee.id}>
+            <strong>{employee.nombre} {employee.apellido}</strong>: {employee.username} / {employee.password}
+          </div>
+        ))}
+        {items.length > 5 && (
+          <div>...y {items.length - 5} más empleado(s).</div>
+        )}
+      </div>
+    )
+
+    toast({
+      title: items.length === 1 ? "Credenciales generadas" : `Se importaron ${items.length} empleados`,
+      description,
+    })
+  }
 
   // Selected employee stats
   const selectedStats = useMemo(() => {
@@ -308,7 +333,8 @@ export function EmployeesView() {
     if (editingEmployee) {
       updateEmployee(editingEmployee.id, formData)
     } else {
-      addEmployee(formData)
+      const createdEmployee = addEmployee(formData)
+      showCreatedCredentialsToast(createdEmployee)
     }
 
     resetForm()
@@ -747,7 +773,8 @@ export function EmployeesView() {
     }))
 
     if (validEmployees.length > 0) {
-      validEmployees.forEach((employee) => addEmployee(employee))
+      const createdEmployees = validEmployees.map((employee) => addEmployee(employee))
+      showCreatedCredentialsToast(createdEmployees)
     }
 
     setIsImporting(false)
@@ -1625,6 +1652,8 @@ export function EmployeesView() {
                   <TableHead>Nombre</TableHead>
                   <TableHead>DNI</TableHead>
                   <TableHead>Departamento</TableHead>
+                  <TableHead>Usuario</TableHead>
+                  <TableHead>Contraseña</TableHead>
                   <TableHead>Cargo</TableHead>
                   <TableHead>Jornada</TableHead>
                   <TableHead>Estado</TableHead>
@@ -1654,6 +1683,8 @@ export function EmployeesView() {
                       </TableCell>
                       <TableCell>{emp.dni}</TableCell>
                       <TableCell>{emp.departamento}</TableCell>
+                      <TableCell className="font-mono">{emp.username || '-'}</TableCell>
+                      <TableCell className="font-mono">{emp.password || '-'}</TableCell>
                       <TableCell>{emp.cargo}</TableCell>
                       <TableCell>
                         <Badge variant="outline">

@@ -60,6 +60,59 @@ export interface Employee {
     turnos: string[]
     semanaActual: number
   }
+  username?: string
+  password?: string
+}
+
+export const EMPLOYEES_KEY = "lms-employees"
+export const RESERVED_USERNAMES = new Set(["admin", "contador", "empleado"])
+
+export const normalizeUserCredential = (value: string) => {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/\s+/g, "")
+    .trim()
+}
+
+export const generateEmployeeCredentials = (
+  nombre: string,
+  apellido: string,
+  existingUsernames: Set<string> = new Set()
+) => {
+  const base = normalizeUserCredential(`${nombre}${apellido}`)
+  let username = base || normalizeUserCredential(nombre)
+  if (!username) username = "empleado"
+
+  let uniqueUsername = username
+  let suffix = 1
+  while (
+    RESERVED_USERNAMES.has(uniqueUsername.toLowerCase()) ||
+    existingUsernames.has(uniqueUsername.toLowerCase())
+  ) {
+    uniqueUsername = `${username}${suffix}`
+    suffix += 1
+  }
+
+  const password = uniqueUsername
+  existingUsernames.add(uniqueUsername.toLowerCase())
+  return { username: uniqueUsername, password }
+}
+
+export const ensureEmployeeCredentials = (employee: Employee, existingUsernames: Set<string>) => {
+  const usernameLower = employee.username?.toLowerCase() ?? ""
+
+  if (employee.username && employee.password && !existingUsernames.has(usernameLower)) {
+    existingUsernames.add(usernameLower)
+    return employee
+  }
+
+  const credentials = generateEmployeeCredentials(employee.nombre, employee.apellido, existingUsernames)
+  return {
+    ...employee,
+    username: credentials.username,
+    password: credentials.password,
+  }
 }
 
 export type TipoFichada = "entrada" | "salida" | "inicioBreak" | "finBreak"
@@ -132,7 +185,7 @@ interface LMSDataContextType {
 
   // Employees
   employees: Employee[]
-  addEmployee: (employee: Omit<Employee, "id">) => void
+  addEmployee: (employee: Omit<Employee, "id">) => Employee
   updateEmployee: (id: string, data: Partial<Employee>) => void
   deleteEmployee: (id: string) => void
   darDeBajaEmployee: (id: string, fechaBaja: string) => void
@@ -204,7 +257,6 @@ interface LMSDataContextType {
 const LMSDataContext = createContext<LMSDataContextType | undefined>(undefined)
 
 const TURNOS_KEY = "lms-turnos"
-const EMPLOYEES_KEY = "lms-employees"
 const FICHADAS_KEY = "lms-fichadas"
 const NOVEDADES_KEY = "lms-novedades"
 const STORAGE_VERSION_KEY = "lms-storage-version"
@@ -295,7 +347,9 @@ const defaultEmployees: Employee[] = [
     telefono: "1189012345",
     turnoId: "t1",
     diasDescanso: [0, 6],
-    modalidadFichada: "biometrico"
+    modalidadFichada: "biometrico",
+    username: "empleado",
+    password: "empleado",
   },
 ]
 
@@ -453,56 +507,6 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
     const storedFichadas = localStorage.getItem(FICHADAS_KEY)
     const storedNovedades = localStorage.getItem(NOVEDADES_KEY)
 
-    /*comentario*/
-    /* if (storedTurnos) {
-      try {
-        setTurnos(JSON.parse(storedTurnos))
-      } catch {
-        setTurnos(defaultTurnos)
-        localStorage.setItem(TURNOS_KEY, JSON.stringify(defaultTurnos))
-      }
-    } else {
-      setTurnos(defaultTurnos)
-      localStorage.setItem(TURNOS_KEY, JSON.stringify(defaultTurnos))
-    }
-    
-    if (storedEmployees) {
-      try {
-        setEmployees(JSON.parse(storedEmployees))
-      } catch {
-        setEmployees(defaultEmployees)
-        localStorage.setItem(EMPLOYEES_KEY, JSON.stringify(defaultEmployees))
-      }
-    } else {
-      setEmployees(defaultEmployees)
-      localStorage.setItem(EMPLOYEES_KEY, JSON.stringify(defaultEmployees))
-    }
-    
-    if (storedFichadas) {
-      try {
-        setFichadas(JSON.parse(storedFichadas))
-      } catch {
-        const defaultFichadas = generateDefaultFichadas()
-        setFichadas(defaultFichadas)
-        localStorage.setItem(FICHADAS_KEY, JSON.stringify(defaultFichadas))
-      }
-    } else {
-      const defaultFichadas = generateDefaultFichadas()
-      setFichadas(defaultFichadas)
-      localStorage.setItem(FICHADAS_KEY, JSON.stringify(defaultFichadas))
-    }
-    
-    if (storedNovedades) {
-      try {
-        setNovedades(JSON.parse(storedNovedades))
-      } catch {
-        setNovedades(defaultNovedades)
-        localStorage.setItem(NOVEDADES_KEY, JSON.stringify(defaultNovedades))
-      }
-    } else {
-      setNovedades(defaultNovedades)
-      localStorage.setItem(NOVEDADES_KEY, JSON.stringify(defaultNovedades))
-    } */
     if (storedTurnos) {
       try {
         const parsedTurnos = JSON.parse(storedTurnos)
@@ -521,40 +525,47 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(TURNOS_KEY, JSON.stringify(defaultTurnos))
     }
 
-    const storedVersion = localStorage.getItem(STORAGE_VERSION_KEY)
-    const shouldResetData = storedVersion !== STORAGE_VERSION
+    const loadEmployees = () => {
+      if (storedEmployees) {
+        try {
+          const parsedEmployees = JSON.parse(storedEmployees)
+          if (Array.isArray(parsedEmployees)) {
+            const existingUsernames = new Set<string>()
+            const employeesWithCredentials = parsedEmployees
+              .map((emp) => {
+                const defaultEmployee = defaultEmployees.find(
+                  (defaultEmp) => defaultEmp.id === emp.id
+                )
+                if (defaultEmployee && emp.nombre === defaultEmployee.nombre && emp.apellido === defaultEmployee.apellido) {
+                  return {
+                    ...emp,
+                    username: defaultEmployee.username,
+                    password: defaultEmployee.password,
+                  }
+                }
+                return emp
+              })
+              .map((emp) => ensureEmployeeCredentials(emp, existingUsernames))
 
-    if (shouldResetData) {
-      localStorage.setItem(STORAGE_VERSION_KEY, STORAGE_VERSION)
-    }
-
-    if (storedEmployees && !shouldResetData) {
-      try {
-        const parsedEmployees = JSON.parse(storedEmployees)
-        const isValidEmployeeData =
-          Array.isArray(parsedEmployees) &&
-          parsedEmployees.length === 1 &&
-          parsedEmployees[0]?.id === "5" &&
-          parsedEmployees[0]?.nombre === "Roberto" &&
-          parsedEmployees[0]?.apellido === "López"
-
-        if (isValidEmployeeData) {
-          setEmployees(parsedEmployees)
-        } else {
-          setEmployees(defaultEmployees)
-          localStorage.setItem(EMPLOYEES_KEY, JSON.stringify(defaultEmployees))
+            setEmployees(employeesWithCredentials)
+            localStorage.setItem(EMPLOYEES_KEY, JSON.stringify(employeesWithCredentials))
+            return
+          }
+        } catch {
+          // fall through to defaults
         }
-      } catch {
-        setEmployees(defaultEmployees)
-        localStorage.setItem(EMPLOYEES_KEY, JSON.stringify(defaultEmployees))
       }
-    } else {
-      setEmployees(defaultEmployees)
-      localStorage.setItem(EMPLOYEES_KEY, JSON.stringify(defaultEmployees))
+
+      const employeesWithCredentials = defaultEmployees.map((emp) =>
+        ensureEmployeeCredentials(emp, new Set<string>())
+      )
+      setEmployees(employeesWithCredentials)
+      localStorage.setItem(EMPLOYEES_KEY, JSON.stringify(employeesWithCredentials))
     }
 
-    const shouldResetFichadas = shouldResetData || !storedFichadas
-    if (storedFichadas && !shouldResetFichadas) {
+    loadEmployees()
+
+    if (storedFichadas) {
       try {
         const parsedFichadas = JSON.parse(storedFichadas)
         if (Array.isArray(parsedFichadas)) {
@@ -572,7 +583,7 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(FICHADAS_KEY, JSON.stringify([]))
     }
 
-    if (storedNovedades && !shouldResetData) {
+    if (storedNovedades) {
       try {
         const parsedNovedades = JSON.parse(storedNovedades)
         if (Array.isArray(parsedNovedades)) {
@@ -675,16 +686,56 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
 
   // Employee functions
   const addEmployee = useCallback(
-    (employee: Omit<Employee, "id">) => {
+    (employee: Omit<Employee, "id">): Employee => {
       const estadoTurno = getEstadoTurno(employee)
-      const newEmployee: Employee = { ...employee, id: crypto.randomUUID(), estadoTurno }
+      const existingUsernames = new Set(
+        employees
+          .map((emp) => emp.username?.toLowerCase())
+          .filter((username): username is string => Boolean(username))
+      )
+      const credentials = generateEmployeeCredentials(employee.nombre, employee.apellido, existingUsernames)
+      const newEmployee: Employee = {
+        ...employee,
+        id: crypto.randomUUID(),
+        estadoTurno,
+        username: credentials.username,
+        password: credentials.password,
+      }
       setEmployees((prev) => [...prev, newEmployee])
+      return newEmployee
     },
-    [getEstadoTurno]
+    [getEstadoTurno, employees]
   )
 
   const updateEmployee = useCallback((id: string, data: Partial<Employee>) => {
-    setEmployees((prev) => prev.map((emp) => (emp.id === id ? { ...emp, ...data } : emp)))
+    setEmployees((prev) =>
+      prev.map((emp) => {
+        if (emp.id !== id) return emp
+
+        const nombreActualizado = data.nombre ?? emp.nombre
+        const apellidoActualizado = data.apellido ?? emp.apellido
+        const credentials =
+          data.nombre || data.apellido
+            ? generateEmployeeCredentials(
+                nombreActualizado,
+                apellidoActualizado,
+                new Set(
+                  prev
+                    .filter((other) => other.id !== id)
+                    .map((other) => other.username?.toLowerCase())
+                    .filter((username): username is string => Boolean(username))
+                )
+              )
+            : { username: emp.username, password: emp.password }
+
+        return {
+          ...emp,
+          ...data,
+          username: credentials.username,
+          password: credentials.password,
+        }
+      })
+    )
   }, [])
 
   const deleteEmployee = useCallback((id: string) => {

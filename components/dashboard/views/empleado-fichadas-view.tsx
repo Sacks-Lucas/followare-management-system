@@ -215,13 +215,16 @@ export function EmpleadoFichadasView() {
     const start = new Date(today)
     start.setDate(start.getDate() - 30)
 
-    const current = new Date(start)
+    const ingreso = parseLocalDate(employee.fechaIngreso)
+    const rangeStart = ingreso > start ? ingreso : start
+
+    const current = new Date(rangeStart)
     while (current <= today) {
       const dateStr = toISODate(current)
       const weekday = current.getDay()
       const isWorkday = workDays.includes(weekday) && !employee.diasDescanso?.includes(weekday)
 
-      if (isWorkday && !attendanceDates.has(dateStr)) {
+      if (current >= ingreso && isWorkday && !attendanceDates.has(dateStr)) {
         const absenceNovedad = absenceNovedadesByDate.get(dateStr)
         const isJustified = nonAttendanceDates.has(dateStr)
 
