@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { useLMSData } from "@/lib/lms-data-context"
+import { parseLocalDate, toLocalISODate, todayLocalISODate } from "@/lib/date-utils"
 import {
   FileText,
   Download,
@@ -75,10 +76,10 @@ export function CierreMensualView() {
   const [fechaInicio, setFechaInicio] = useState(() => {
     const date = new Date()
     date.setDate(1)
-    return date.toISOString().split("T")[0]
+    return toLocalISODate(date)
   })
   const [fechaFin, setFechaFin] = useState(() => {
-    return new Date().toISOString().split("T")[0]
+    return todayLocalISODate()
   })
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null)
 
@@ -95,24 +96,24 @@ export function CierreMensualView() {
         const inicio = new Date(today)
         inicio.setDate(today.getDate() - 15)
         return {
-          inicio: inicio.toISOString().split("T")[0],
-          fin: today.toISOString().split("T")[0],
+          inicio: toLocalISODate(inicio),
+          fin: toLocalISODate(today),
         }
       }
       case "30dias": {
         const inicio = new Date(today)
         inicio.setDate(today.getDate() - 30)
         return {
-          inicio: inicio.toISOString().split("T")[0],
-          fin: today.toISOString().split("T")[0],
+          inicio: toLocalISODate(inicio),
+          fin: toLocalISODate(today),
         }
       }
       case "mensual": {
         const inicio = new Date(selectedYear, selectedMonth, 1)
         const fin = new Date(selectedYear, selectedMonth + 1, 0)
         return {
-          inicio: inicio.toISOString().split("T")[0],
-          fin: fin.toISOString().split("T")[0],
+          inicio: toLocalISODate(inicio),
+          fin: toLocalISODate(fin),
         }
       }
       case "personalizado":
@@ -290,14 +291,14 @@ export function CierreMensualView() {
         }
       }
 
-      const parsed = new Date(`${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}T00:00:00`)
+      const parsed = parseLocalDate(`${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`)
       return isNaN(parsed.getTime())
         ? undefined
         : `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`
     }
 
-    const parsed = new Date(rawValue)
-    return isNaN(parsed.getTime()) ? undefined : parsed.toISOString().split("T")[0]
+    const parsed = parseLocalDate(rawValue)
+    return isNaN(parsed.getTime()) ? undefined : toLocalISODate(parsed)
   }
 
   return (
@@ -422,8 +423,8 @@ export function CierreMensualView() {
             <div className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-lg">
               Período seleccionado:{" "}
               <strong>
-                {new Date(periodDates.inicio).toLocaleDateString("es-AR")} -{" "}
-                {new Date(periodDates.fin).toLocaleDateString("es-AR")}
+                {parseLocalDate(periodDates.inicio).toLocaleDateString("es-AR")} -{" "}
+                {parseLocalDate(periodDates.fin).toLocaleDateString("es-AR")}
               </strong>
             </div>
           </CardContent>
@@ -787,7 +788,7 @@ export function CierreMensualView() {
                       <div className="min-w-0 flex-1">
                         <p className="text-xs truncate">{novedad.descripcion}</p>
                         <p className="text-xs text-muted-foreground">
-                          {new Date(`${novedad.fecha}T00:00:00`).toLocaleDateString("es-AR")}
+                          {parseLocalDate(novedad.fecha).toLocaleDateString("es-AR")}
                         </p>
                       </div>
                     </div>

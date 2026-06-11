@@ -23,6 +23,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useLMSData, type Employee, type TipoNovedad, type TipoJornada, type ModalidadFichada, type MetodoFichada, type TipoFichada } from "@/lib/lms-data-context"
+import { parseLocalDate, toLocalISODate, todayLocalISODate } from "@/lib/date-utils"
 import {
   Users,
   UserPlus,
@@ -208,10 +209,10 @@ export function EmployeesView() {
   const [periodoInicio, setPeriodoInicio] = useState(() => {
     const date = new Date()
     date.setDate(1)
-    return date.toISOString().split("T")[0]
+    return toLocalISODate(date)
   })
   const [periodoFin, setPeriodoFin] = useState(() => {
-    return new Date().toISOString().split("T")[0]
+    return todayLocalISODate()
   })
 
   // Form state - Extended
@@ -226,7 +227,7 @@ export function EmployeesView() {
     categoriaLaboral: "",
     convenio: "",
     tipoJornada: "completa" as TipoJornada,
-    fechaIngreso: new Date().toISOString().split("T")[0],
+    fechaIngreso: todayLocalISODate(),
     estado: "activo" as Employee["estado"],
     email: "",
     telefono: "",
@@ -262,7 +263,7 @@ export function EmployeesView() {
   const [selectedTurnoId, setSelectedTurnoId] = useState("")
   const [selectedRotativoTurnos, setSelectedRotativoTurnos] = useState<string[]>([])
   const [turnoTipo, setTurnoTipo] = useState<"fijo" | "rotativo">("fijo")
-  const [fechaBaja, setFechaBaja] = useState(new Date().toISOString().split("T")[0])
+  const [fechaBaja, setFechaBaja] = useState(todayLocalISODate())
 
   // Selected employee stats
   const selectedStats = useMemo(() => {
@@ -326,7 +327,7 @@ export function EmployeesView() {
       categoriaLaboral: "",
       convenio: "",
       tipoJornada: "completa",
-      fechaIngreso: new Date().toISOString().split("T")[0],
+      fechaIngreso: todayLocalISODate(),
       estado: "activo",
       email: "",
       telefono: "",
@@ -659,14 +660,14 @@ export function EmployeesView() {
         }
       }
 
-      const parsed = new Date(`${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}T00:00:00`)
+      const parsed = parseLocalDate(`${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`)
       return isNaN(parsed.getTime())
         ? undefined
         : `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`
     }
 
-    const parsed = new Date(rawValue)
-    return isNaN(parsed.getTime()) ? undefined : parsed.toISOString().split("T")[0]
+    const parsed = parseLocalDate(rawValue)
+    return isNaN(parsed.getTime()) ? undefined : toLocalISODate(parsed)
   }
 
   const formatDisplayDate = (value?: string): string => {
@@ -681,7 +682,7 @@ export function EmployeesView() {
     if (value === null || value === undefined) return undefined
     if (typeof value === "number") {
       const date = new Date((value - 25569) * 86400 * 1000)
-      return isNaN(date.getTime()) ? undefined : date.toISOString().split("T")[0]
+      return isNaN(date.getTime()) ? undefined : toLocalISODate(date)
     }
 
     return normalizeDateString(String(value))

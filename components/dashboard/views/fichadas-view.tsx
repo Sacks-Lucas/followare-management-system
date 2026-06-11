@@ -29,6 +29,7 @@ import {
   type MetodoFichada,
   type TipoNovedad,
 } from "@/lib/lms-data-context"
+import { parseLocalDate, toLocalISODate, todayLocalISODate } from "@/lib/date-utils"
 import {
   Clock,
   LogIn,
@@ -156,21 +157,21 @@ const normalizeDateString = (value: string): string | undefined => {
       }
     }
 
-    const parsed = new Date(`${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}T00:00:00`)
+    const parsed = new Date(Number(year), Number(month) - 1, Number(day))
     return isNaN(parsed.getTime())
       ? undefined
-      : `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`
+      : toLocalISODate(parsed)
   }
 
-  const parsed = new Date(rawValue)
-  return isNaN(parsed.getTime()) ? undefined : parsed.toISOString().split("T")[0]
+  const parsed = parseLocalDate(rawValue)
+  return isNaN(parsed.getTime()) ? undefined : toLocalISODate(parsed)
 }
 
 const parseExcelDate = (value: unknown): string | undefined => {
   if (value === null || value === undefined) return undefined
   if (typeof value === "number") {
     const date = new Date((value - 25569) * 86400 * 1000)
-    return isNaN(date.getTime()) ? undefined : date.toISOString().split("T")[0]
+    return isNaN(date.getTime()) ? undefined : toLocalISODate(date)
   }
 
   return normalizeDateString(String(value))
@@ -197,7 +198,7 @@ export function FichadasView() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isNovedadDialogOpen, setIsNovedadDialogOpen] = useState(false)
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
-  const [filterDate, setFilterDate] = useState(new Date().toISOString().split("T")[0])
+  const [filterDate, setFilterDate] = useState(todayLocalISODate())
   const [activeTab, setActiveTab] = useState("fichadas")
 
   // Form state for fichada
@@ -212,7 +213,7 @@ export function FichadasView() {
   // Form state for novedad
   const [novedadEmpleado, setNovedadEmpleado] = useState("")
   const [novedadTipo, setNovedadTipo] = useState<TipoNovedad>("justificativo")
-  const [novedadFecha, setNovedadFecha] = useState(new Date().toISOString().split("T")[0])
+  const [novedadFecha, setNovedadFecha] = useState(todayLocalISODate())
   const [novedadFechaFin, setNovedadFechaFin] = useState("")
   const [novedadDescripcion, setNovedadDescripcion] = useState("")
 
@@ -283,7 +284,7 @@ export function FichadasView() {
     // Reset form
     setNovedadEmpleado("")
     setNovedadTipo("justificativo")
-    setNovedadFecha(new Date().toISOString().split("T")[0])
+    setNovedadFecha(todayLocalISODate())
     setNovedadFechaFin("")
     setNovedadDescripcion("")
     setIsNovedadDialogOpen(false)
@@ -372,7 +373,7 @@ export function FichadasView() {
       empleadoId: employee.id,
       empleadoNombre: `${employee.nombre} ${employee.apellido}`,
       tipo,
-      fecha: new Date().toISOString().split("T")[0],
+      fecha: todayLocalISODate(),
       hora: new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }),
       ubicacion: "Entrada Principal",
       metodo,
@@ -1059,11 +1060,11 @@ export function FichadasView() {
                       novedades.slice(0, 20).map((novedad) => (
                         <TableRow key={novedad.id}>
                           <TableCell className="font-mono">
-                            {new Date(`${novedad.fecha}T00:00:00`).toLocaleDateString("es-AR")}
+                            {parseLocalDate(novedad.fecha).toLocaleDateString("es-AR")}
                             {novedad.fechaFin && (
                               <span className="text-muted-foreground">
                                 {" "}
-                                - {new Date(`${novedad.fechaFin}T00:00:00`).toLocaleDateString("es-AR")}
+                                - {parseLocalDate(novedad.fechaFin).toLocaleDateString("es-AR")}
                               </span>
                             )}
                           </TableCell>
