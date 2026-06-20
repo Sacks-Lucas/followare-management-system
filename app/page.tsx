@@ -1,6 +1,8 @@
 "use client"
 
-import { useState, Component, type ErrorInfo, type ReactNode } from "react"
+import { useState, Component, type ErrorInfo, type ReactNode, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/lib/auth-context"
 import { Sidebar, type ViewType } from "@/components/dashboard/sidebar"
 import { TopBar } from "@/components/dashboard/top-bar"
 import { LMSDataProvider } from "@/lib/lms-data-context"
@@ -8,6 +10,7 @@ import { DashboardView } from "@/components/dashboard/views/dashboard-view"
 import { FichadasView } from "@/components/dashboard/views/fichadas-view"
 import { EmployeesView } from "@/components/dashboard/views/employees-view"
 import { CierreMensualView } from "@/components/dashboard/views/cierre-mensual-view"
+import { EmpleadoFichadasView } from "@/components/dashboard/views/empleado-fichadas-view"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { AlertTriangle, RefreshCw } from "lucide-react"
@@ -93,14 +96,48 @@ const viewComponents: Record<ViewType, React.ComponentType> = {
   fichadas: FichadasView,
   employees: EmployeesView,
   cierre: CierreMensualView,
+  "empleado-fichadas": EmpleadoFichadasView,
 }
 
 export default function DashboardPage() {
+  const router = useRouter()
+  const { user, loading, isAuthenticated } = useAuth()
   const [activeView, setActiveView] = useState<ViewType>("dashboard")
   const [resetKey, setResetKey] = useState(0)
-  
+
+  // Manejo de autenticación
+  useEffect(() => {
+    if (loading) return
+
+    if (!isAuthenticated) {
+      router.push("/login")
+      return
+    }
+
+    // Establecer vista inicial según el rol
+    if (user?.role === "empleado") {
+      setActiveView("empleado-fichadas")
+    } else if (user?.role === "contador") {
+      setActiveView("cierre")
+    } else {
+      setActiveView("dashboard")
+    }
+  }, [isAuthenticated, loading, user?.role, router])
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return null
+  }
+
   // Default to dashboard if view is invalid
-  const validViews: ViewType[] = ["dashboard", "fichadas", "employees", "cierre"]
+  const validViews: ViewType[] = ["dashboard", "fichadas", "employees", "cierre", "empleado-fichadas"]
   const safeView = validViews.includes(activeView) ? activeView : "dashboard"
   const ActiveComponent = viewComponents[safeView] || DashboardView
 

@@ -23,6 +23,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useLMSData, type Employee, type TipoNovedad, type TipoJornada, type ModalidadFichada, type MetodoFichada, type TipoFichada } from "@/lib/lms-data-context"
+import { parseLocalDate, toLocalISODate, todayLocalISODate } from "@/lib/date-utils"
 import {
   Users,
   UserPlus,
@@ -44,6 +45,7 @@ import {
   Download,
   Info,
 } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
 import {
   Dialog,
   DialogContent,
@@ -208,10 +210,10 @@ export function EmployeesView() {
   const [periodoInicio, setPeriodoInicio] = useState(() => {
     const date = new Date()
     date.setDate(1)
-    return date.toISOString().split("T")[0]
+    return toLocalISODate(date)
   })
   const [periodoFin, setPeriodoFin] = useState(() => {
-    return new Date().toISOString().split("T")[0]
+    return todayLocalISODate()
   })
 
   // Form state - Extended
@@ -226,7 +228,7 @@ export function EmployeesView() {
     categoriaLaboral: "",
     convenio: "",
     tipoJornada: "completa" as TipoJornada,
-    fechaIngreso: new Date().toISOString().split("T")[0],
+    fechaIngreso: todayLocalISODate(),
     estado: "activo" as Employee["estado"],
     email: "",
     telefono: "",
@@ -262,7 +264,31 @@ export function EmployeesView() {
   const [selectedTurnoId, setSelectedTurnoId] = useState("")
   const [selectedRotativoTurnos, setSelectedRotativoTurnos] = useState<string[]>([])
   const [turnoTipo, setTurnoTipo] = useState<"fijo" | "rotativo">("fijo")
-  const [fechaBaja, setFechaBaja] = useState(new Date().toISOString().split("T")[0])
+  const [fechaBaja, setFechaBaja] = useState(todayLocalISODate())
+  const { toast } = useToast()
+
+  const showCreatedCredentialsToast = (createdEmployees: Employee | Employee[]) => {
+    const items = Array.isArray(createdEmployees) ? createdEmployees : [createdEmployees]
+    if (items.length === 0) return
+
+    const description = (
+      <div className="grid gap-1">
+        {items.slice(0, 5).map((employee) => (
+          <div key={employee.id}>
+            <strong>{employee.nombre} {employee.apellido}</strong>: {employee.username} / {employee.password}
+          </div>
+        ))}
+        {items.length > 5 && (
+          <div>...y {items.length - 5} más empleado(s).</div>
+        )}
+      </div>
+    )
+
+    toast({
+      title: items.length === 1 ? "Credenciales generadas" : `Se importaron ${items.length} empleados`,
+      description,
+    })
+  }
 
   // Selected employee stats
   const selectedStats = useMemo(() => {
@@ -307,7 +333,8 @@ export function EmployeesView() {
     if (editingEmployee) {
       updateEmployee(editingEmployee.id, formData)
     } else {
-      addEmployee(formData)
+      const createdEmployee = addEmployee(formData)
+      showCreatedCredentialsToast(createdEmployee)
     }
 
     resetForm()
@@ -326,7 +353,7 @@ export function EmployeesView() {
       categoriaLaboral: "",
       convenio: "",
       tipoJornada: "completa",
-      fechaIngreso: new Date().toISOString().split("T")[0],
+      fechaIngreso: todayLocalISODate(),
       estado: "activo",
       email: "",
       telefono: "",
@@ -659,14 +686,14 @@ export function EmployeesView() {
         }
       }
 
-      const parsed = new Date(`${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}T00:00:00`)
+      const parsed = parseLocalDate(`${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`)
       return isNaN(parsed.getTime())
         ? undefined
         : `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`
     }
 
-    const parsed = new Date(rawValue)
-    return isNaN(parsed.getTime()) ? undefined : parsed.toISOString().split("T")[0]
+    const parsed = parseLocalDate(rawValue)
+    return isNaN(parsed.getTime()) ? undefined : toLocalISODate(parsed)
   }
 
   const formatDisplayDate = (value?: string): string => {
@@ -681,7 +708,7 @@ export function EmployeesView() {
     if (value === null || value === undefined) return undefined
     if (typeof value === "number") {
       const date = new Date((value - 25569) * 86400 * 1000)
-      return isNaN(date.getTime()) ? undefined : date.toISOString().split("T")[0]
+      return isNaN(date.getTime()) ? undefined : toLocalISODate(date)
     }
 
     return normalizeDateString(String(value))
@@ -746,7 +773,8 @@ export function EmployeesView() {
     }))
 
     if (validEmployees.length > 0) {
-      validEmployees.forEach((employee) => addEmployee(employee))
+      const createdEmployees = validEmployees.map((employee) => addEmployee(employee))
+      showCreatedCredentialsToast(createdEmployees)
     }
 
     setIsImporting(false)
@@ -1624,6 +1652,8 @@ export function EmployeesView() {
                   <TableHead>Nombre</TableHead>
                   <TableHead>DNI</TableHead>
                   <TableHead>Departamento</TableHead>
+                  <TableHead>Usuario</TableHead>
+                  <TableHead>Contraseña</TableHead>
                   <TableHead>Cargo</TableHead>
                   <TableHead>Jornada</TableHead>
                   <TableHead>Estado</TableHead>
@@ -1653,6 +1683,8 @@ export function EmployeesView() {
                       </TableCell>
                       <TableCell>{emp.dni}</TableCell>
                       <TableCell>{emp.departamento}</TableCell>
+                      <TableCell className="font-mono">{emp.username || '-'}</TableCell>
+                      <TableCell className="font-mono">{emp.password || '-'}</TableCell>
                       <TableCell>{emp.cargo}</TableCell>
                       <TableCell>
                         <Badge variant="outline">

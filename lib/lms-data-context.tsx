@@ -1,6 +1,7 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react"
+import { parseLocalDate, toLocalISODate, todayLocalISODate } from "./date-utils"
 
 // Types
 export interface Turno {
@@ -58,6 +59,59 @@ export interface Employee {
   turnoRotativo?: {
     turnos: string[]
     semanaActual: number
+  }
+  username?: string
+  password?: string
+}
+
+export const EMPLOYEES_KEY = "lms-employees"
+export const RESERVED_USERNAMES = new Set(["admin", "contador", "empleado"])
+
+export const normalizeUserCredential = (value: string) => {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/\s+/g, "")
+    .trim()
+}
+
+export const generateEmployeeCredentials = (
+  nombre: string,
+  apellido: string,
+  existingUsernames: Set<string> = new Set()
+) => {
+  const base = normalizeUserCredential(`${nombre}${apellido}`)
+  let username = base || normalizeUserCredential(nombre)
+  if (!username) username = "empleado"
+
+  let uniqueUsername = username
+  let suffix = 1
+  while (
+    RESERVED_USERNAMES.has(uniqueUsername.toLowerCase()) ||
+    existingUsernames.has(uniqueUsername.toLowerCase())
+  ) {
+    uniqueUsername = `${username}${suffix}`
+    suffix += 1
+  }
+
+  const password = uniqueUsername
+  existingUsernames.add(uniqueUsername.toLowerCase())
+  return { username: uniqueUsername, password }
+}
+
+export const ensureEmployeeCredentials = (employee: Employee, existingUsernames: Set<string>) => {
+  const usernameLower = employee.username?.toLowerCase() ?? ""
+
+  if (employee.username && employee.password && !existingUsernames.has(usernameLower)) {
+    existingUsernames.add(usernameLower)
+    return employee
+  }
+
+  const credentials = generateEmployeeCredentials(employee.nombre, employee.apellido, existingUsernames)
+  return {
+    ...employee,
+    username: credentials.username,
+    password: credentials.password,
   }
 }
 
@@ -131,7 +185,7 @@ interface LMSDataContextType {
 
   // Employees
   employees: Employee[]
-  addEmployee: (employee: Omit<Employee, "id">) => void
+  addEmployee: (employee: Omit<Employee, "id">) => Employee
   updateEmployee: (id: string, data: Partial<Employee>) => void
   deleteEmployee: (id: string) => void
   darDeBajaEmployee: (id: string, fechaBaja: string) => void
@@ -203,9 +257,10 @@ interface LMSDataContextType {
 const LMSDataContext = createContext<LMSDataContextType | undefined>(undefined)
 
 const TURNOS_KEY = "lms-turnos"
-const EMPLOYEES_KEY = "lms-employees"
 const FICHADAS_KEY = "lms-fichadas"
 const NOVEDADES_KEY = "lms-novedades"
+const STORAGE_VERSION_KEY = "lms-storage-version"
+const STORAGE_VERSION = "1"
 
 // Default turnos
 const defaultTurnos: Turno[] = [
@@ -275,88 +330,6 @@ const defaultTurnos: Turno[] = [
 // Default mock data
 const defaultEmployees: Employee[] = [
   {
-    id: "1",
-    legajo: "EMP001",
-    nombre: "Juan",
-    apellido: "Pérez",
-    dni: "30456789",
-    cuil: "20-30456789-5",
-    departamento: "Producción",
-    cargo: "Operario",
-    categoriaLaboral: "Operario Calificado",
-    convenio: "UOCRA",
-    tipoJornada: "completa",
-    fechaIngreso: "2022-03-15",
-    estado: "activo",
-    estadoTurno: "actualizado",
-    email: "juan.perez@empresa.com",
-    telefono: "1145678901",
-    turnoId: "t5",
-    diasDescanso: [0, 6],
-    modalidadFichada: "biometrico"
-  },
-  {
-    id: "2",
-    legajo: "EMP002",
-    nombre: "María",
-    apellido: "González",
-    dni: "31234567",
-    cuil: "27-31234567-4",
-    departamento: "Administración",
-    cargo: "Contadora",
-    categoriaLaboral: "Profesional",
-    convenio: "Empleados de Comercio",
-    tipoJornada: "completa",
-    fechaIngreso: "2021-08-01",
-    estado: "activo",
-    estadoTurno: "actualizado",
-    email: "maria.gonzalez@empresa.com",
-    telefono: "1156789012",
-    turnoId: "t4",
-    diasDescanso: [0, 6],
-    modalidadFichada: "todas"
-  },
-  {
-    id: "3",
-    legajo: "EMP003",
-    nombre: "Carlos",
-    apellido: "Rodríguez",
-    dni: "29876543",
-    cuil: "20-29876543-8",
-    departamento: "Logística",
-    cargo: "Supervisor",
-    categoriaLaboral: "Supervisor",
-    tipoJornada: "completa",
-    fechaIngreso: "2020-01-10",
-    estado: "activo",
-    estadoTurno: "actualizado",
-    email: "carlos.rodriguez@empresa.com",
-    telefono: "1167890123",
-    turnoId: "t1",
-    diasDescanso: [0, 6],
-    modalidadFichada: "biometrico"
-  },
-  {
-    id: "4",
-    legajo: "EMP004",
-    nombre: "Ana",
-    apellido: "Martínez",
-    dni: "32109876",
-    cuil: "27-32109876-2",
-    departamento: "RRHH",
-    cargo: "Analista RRHH",
-    categoriaLaboral: "Administrativo",
-    tipoJornada: "completa",
-    fechaIngreso: "2023-02-20",
-    estado: "licencia",
-    estadoTurno: "actualizado",
-    email: "ana.martinez@empresa.com",
-    telefono: "1178901234",
-    turnoId: "t4",
-    diasDescanso: [0, 6],
-    modalidadFichada: "todas"
-  },
-  {
     id: "5",
     legajo: "EMP005",
     nombre: "Roberto",
@@ -374,7 +347,9 @@ const defaultEmployees: Employee[] = [
     telefono: "1189012345",
     turnoId: "t1",
     diasDescanso: [0, 6],
-    modalidadFichada: "biometrico"
+    modalidadFichada: "biometrico",
+    username: "empleado",
+    password: "empleado",
   },
 ]
 
@@ -384,7 +359,7 @@ const generateDefaultFichadas = (): Fichada[] => {
   const metodos: MetodoFichada[] = ["biometrico", "manual", "tarjeta"]
 
   // Generate some fichadas for today
-  defaultEmployees.slice(0, 4).forEach((emp) => {
+  defaultEmployees.forEach((emp) => {
     const baseHour = 8 + Math.floor(Math.random() * 2)
     const baseMinute = Math.floor(Math.random() * 30)
     const esTardanza = baseHour > 8 || (baseHour === 8 && baseMinute > 15)
@@ -394,7 +369,7 @@ const generateDefaultFichadas = (): Fichada[] => {
       empleadoId: emp.id,
       empleadoNombre: `${emp.nombre} ${emp.apellido}`,
       tipo: "entrada",
-      fecha: today.toISOString().split("T")[0],
+      fecha: toLocalISODate(today),
       hora: `${String(baseHour).padStart(2, "0")}:${String(baseMinute).padStart(2, "0")}`,
       ubicacion: "Entrada Principal",
       metodo: metodos[Math.floor(Math.random() * metodos.length)],
@@ -406,7 +381,7 @@ const generateDefaultFichadas = (): Fichada[] => {
   for (let i = 1; i <= 30; i++) {
     const date = new Date(today)
     date.setDate(date.getDate() - i)
-    const dateStr = date.toISOString().split("T")[0]
+    const dateStr = toLocalISODate(date)
 
     if (date.getDay() === 0 || date.getDay() === 6) continue // Skip weekends
 
@@ -458,7 +433,7 @@ const defaultNovedades: Novedad[] = [
     empleadoId: "1",
     empleadoNombre: "Juan Pérez",
     tipo: "tardanza",
-    fecha: new Date().toISOString().split("T")[0],
+    fecha: todayLocalISODate(),
     descripcion: "Llegó 45 minutos tarde por problemas de transporte",
     aprobado: false
   },
@@ -467,18 +442,18 @@ const defaultNovedades: Novedad[] = [
     empleadoId: "3",
     empleadoNombre: "Carlos Rodríguez",
     tipo: "horaExtra",
-    fecha: new Date(Date.now() - 86400000).toISOString().split("T")[0],
+    fecha: toLocalISODate(new Date(Date.now() - 86400000)),
     descripcion: "Realizó 2 horas extra para completar envío urgente",
     aprobado: true,
     aprobadoPor: "Admin",
-    fechaAprobacion: new Date(Date.now() - 43200000).toISOString().split("T")[0]
+    fechaAprobacion: toLocalISODate(new Date(Date.now() - 43200000))
   },
   {
     id: "n3",
     empleadoId: "5",
     empleadoNombre: "Roberto López",
     tipo: "ausencia",
-    fecha: new Date(Date.now() - 172800000).toISOString().split("T")[0],
+    fecha: toLocalISODate(new Date(Date.now() - 172800000)),
     descripcion: "Ausente sin aviso previo",
     aprobado: false
   },
@@ -487,19 +462,19 @@ const defaultNovedades: Novedad[] = [
     empleadoId: "4",
     empleadoNombre: "Ana Martínez",
     tipo: "licencia",
-    fecha: new Date(Date.now() - 432000000).toISOString().split("T")[0],
-    fechaFin: new Date(Date.now() + 864000000).toISOString().split("T")[0],
+    fecha: toLocalISODate(new Date(Date.now() - 432000000)),
+    fechaFin: toLocalISODate(new Date(Date.now() + 864000000)),
     descripcion: "Licencia por maternidad",
     aprobado: true,
     aprobadoPor: "RRHH",
-    fechaAprobacion: new Date(Date.now() - 604800000).toISOString().split("T")[0]
+    fechaAprobacion: toLocalISODate(new Date(Date.now() - 604800000))
   },
   {
     id: "n5",
     empleadoId: "2",
     empleadoNombre: "María González",
     tipo: "justificativo",
-    fecha: new Date(Date.now() - 259200000).toISOString().split("T")[0],
+    fecha: toLocalISODate(new Date(Date.now() - 259200000)),
     descripcion: "Turno médico programado - Adjunta certificado",
     aprobado: true,
     aprobadoPor: "RRHH",
@@ -510,7 +485,7 @@ const defaultNovedades: Novedad[] = [
     empleadoId: "1",
     empleadoNombre: "Juan Pérez",
     tipo: "cambioTurno",
-    fecha: new Date(Date.now() - 604800000).toISOString().split("T")[0],
+    fecha: toLocalISODate(new Date(Date.now() - 604800000)),
     descripcion: "Cambio de turno mañana a tarde por necesidades operativas",
     aprobado: true,
     turnoAnterior: "Mañana",
@@ -532,10 +507,15 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
     const storedFichadas = localStorage.getItem(FICHADAS_KEY)
     const storedNovedades = localStorage.getItem(NOVEDADES_KEY)
 
-    /*comentario*/
-    /* if (storedTurnos) {
+    if (storedTurnos) {
       try {
-        setTurnos(JSON.parse(storedTurnos))
+        const parsedTurnos = JSON.parse(storedTurnos)
+        if (Array.isArray(parsedTurnos) && parsedTurnos.length > 0) {
+          setTurnos(parsedTurnos)
+        } else {
+          setTurnos(defaultTurnos)
+          localStorage.setItem(TURNOS_KEY, JSON.stringify(defaultTurnos))
+        }
       } catch {
         setTurnos(defaultTurnos)
         localStorage.setItem(TURNOS_KEY, JSON.stringify(defaultTurnos))
@@ -544,83 +524,83 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
       setTurnos(defaultTurnos)
       localStorage.setItem(TURNOS_KEY, JSON.stringify(defaultTurnos))
     }
-    
-    if (storedEmployees) {
-      try {
-        setEmployees(JSON.parse(storedEmployees))
-      } catch {
-        setEmployees(defaultEmployees)
-        localStorage.setItem(EMPLOYEES_KEY, JSON.stringify(defaultEmployees))
+
+    const loadEmployees = () => {
+      if (storedEmployees) {
+        try {
+          const parsedEmployees = JSON.parse(storedEmployees)
+          if (Array.isArray(parsedEmployees)) {
+            const existingUsernames = new Set<string>()
+            const employeesWithCredentials = parsedEmployees
+              .map((emp) => {
+                const defaultEmployee = defaultEmployees.find(
+                  (defaultEmp) => defaultEmp.id === emp.id
+                )
+                if (defaultEmployee && emp.nombre === defaultEmployee.nombre && emp.apellido === defaultEmployee.apellido) {
+                  return {
+                    ...emp,
+                    username: defaultEmployee.username,
+                    password: defaultEmployee.password,
+                  }
+                }
+                return emp
+              })
+              .map((emp) => ensureEmployeeCredentials(emp, existingUsernames))
+
+            setEmployees(employeesWithCredentials)
+            localStorage.setItem(EMPLOYEES_KEY, JSON.stringify(employeesWithCredentials))
+            return
+          }
+        } catch {
+          // fall through to defaults
+        }
       }
-    } else {
-      setEmployees(defaultEmployees)
-      localStorage.setItem(EMPLOYEES_KEY, JSON.stringify(defaultEmployees))
-    }
-    
-    if (storedFichadas) {
-      try {
-        setFichadas(JSON.parse(storedFichadas))
-      } catch {
-        const defaultFichadas = generateDefaultFichadas()
-        setFichadas(defaultFichadas)
-        localStorage.setItem(FICHADAS_KEY, JSON.stringify(defaultFichadas))
-      }
-    } else {
-      const defaultFichadas = generateDefaultFichadas()
-      setFichadas(defaultFichadas)
-      localStorage.setItem(FICHADAS_KEY, JSON.stringify(defaultFichadas))
-    }
-    
-    if (storedNovedades) {
-      try {
-        setNovedades(JSON.parse(storedNovedades))
-      } catch {
-        setNovedades(defaultNovedades)
-        localStorage.setItem(NOVEDADES_KEY, JSON.stringify(defaultNovedades))
-      }
-    } else {
-      setNovedades(defaultNovedades)
-      localStorage.setItem(NOVEDADES_KEY, JSON.stringify(defaultNovedades))
-    } */
-    if (storedTurnos) {
-      try {
-        setTurnos(JSON.parse(storedTurnos))
-      } catch {
-        setTurnos([])
-      }
-    } else {
-      setTurnos([])
+
+      const employeesWithCredentials = defaultEmployees.map((emp) =>
+        ensureEmployeeCredentials(emp, new Set<string>())
+      )
+      setEmployees(employeesWithCredentials)
+      localStorage.setItem(EMPLOYEES_KEY, JSON.stringify(employeesWithCredentials))
     }
 
-    if (storedEmployees) {
-      try {
-        setEmployees(JSON.parse(storedEmployees))
-      } catch {
-        setEmployees([])
-      }
-    } else {
-      setEmployees([])
-    }
+    loadEmployees()
 
     if (storedFichadas) {
       try {
-        setFichadas(JSON.parse(storedFichadas))
+        const parsedFichadas = JSON.parse(storedFichadas)
+        if (Array.isArray(parsedFichadas)) {
+          setFichadas(parsedFichadas)
+        } else {
+          setFichadas([])
+          localStorage.setItem(FICHADAS_KEY, JSON.stringify([]))
+        }
       } catch {
         setFichadas([])
+        localStorage.setItem(FICHADAS_KEY, JSON.stringify([]))
       }
     } else {
       setFichadas([])
+      localStorage.setItem(FICHADAS_KEY, JSON.stringify([]))
     }
 
     if (storedNovedades) {
       try {
-        setNovedades(JSON.parse(storedNovedades))
+        const parsedNovedades = JSON.parse(storedNovedades)
+        if (Array.isArray(parsedNovedades)) {
+          setNovedades(parsedNovedades)
+        } else {
+          setNovedades([])
+          localStorage.setItem(NOVEDADES_KEY, JSON.stringify([]))
+        }
       } catch {
         setNovedades([])
+        localStorage.setItem(NOVEDADES_KEY, JSON.stringify([]))
       }
     } else {
       setNovedades([])
+      localStorage.setItem(NOVEDADES_KEY, JSON.stringify([]))
     }
+
     setIsLoaded(true)
   }, [])
   //localStorage.clear()
@@ -636,7 +616,7 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
         const turno = turnos.find((t) => t.id === emp.turnoId)
         if (!turno) return "desactualizado"
         if (turno.tipo === "rotativo") {
-          const fechaFin = turno.fechaFin ? new Date(turno.fechaFin) : null
+          const fechaFin = turno.fechaFin ? parseLocalDate(turno.fechaFin) : null
           return !fechaFin || hoy <= fechaFin ? "actualizado" : "desactualizado"
         }
         return "actualizado"
@@ -646,7 +626,7 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
         const esValido = emp.turnoRotativo.turnos.every((turnoId) => {
           const turno = turnos.find((t) => t.id === turnoId)
           if (!turno || turno.tipo !== "rotativo") return false
-          const fechaFin = turno.fechaFin ? new Date(turno.fechaFin) : null
+          const fechaFin = turno.fechaFin ? parseLocalDate(turno.fechaFin) : null
           return !fechaFin || hoy <= fechaFin
         })
         return esValido ? "actualizado" : "desactualizado"
@@ -708,16 +688,56 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
 
   // Employee functions
   const addEmployee = useCallback(
-    (employee: Omit<Employee, "id">) => {
+    (employee: Omit<Employee, "id">): Employee => {
       const estadoTurno = getEstadoTurno(employee)
-      const newEmployee: Employee = { ...employee, id: crypto.randomUUID(), estadoTurno }
+      const existingUsernames = new Set(
+        employees
+          .map((emp) => emp.username?.toLowerCase())
+          .filter((username): username is string => Boolean(username))
+      )
+      const credentials = generateEmployeeCredentials(employee.nombre, employee.apellido, existingUsernames)
+      const newEmployee: Employee = {
+        ...employee,
+        id: crypto.randomUUID(),
+        estadoTurno,
+        username: credentials.username,
+        password: credentials.password,
+      }
       setEmployees((prev) => [...prev, newEmployee])
+      return newEmployee
     },
-    [getEstadoTurno]
+    [getEstadoTurno, employees]
   )
 
   const updateEmployee = useCallback((id: string, data: Partial<Employee>) => {
-    setEmployees((prev) => prev.map((emp) => (emp.id === id ? { ...emp, ...data } : emp)))
+    setEmployees((prev) =>
+      prev.map((emp) => {
+        if (emp.id !== id) return emp
+
+        const nombreActualizado = data.nombre ?? emp.nombre
+        const apellidoActualizado = data.apellido ?? emp.apellido
+        const credentials =
+          data.nombre || data.apellido
+            ? generateEmployeeCredentials(
+                nombreActualizado,
+                apellidoActualizado,
+                new Set(
+                  prev
+                    .filter((other) => other.id !== id)
+                    .map((other) => other.username?.toLowerCase())
+                    .filter((username): username is string => Boolean(username))
+                )
+              )
+            : { username: emp.username, password: emp.password }
+
+        return {
+          ...emp,
+          ...data,
+          username: credentials.username,
+          password: credentials.password,
+        }
+      })
+    )
   }, [])
 
   const deleteEmployee = useCallback((id: string) => {
@@ -821,13 +841,39 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
   }
 
   const toDate = (fecha: string): Date => {
-    const date = new Date(`${fecha}T00:00:00`)
-    date.setHours(0, 0, 0, 0)
-    return date
+    return parseLocalDate(fecha)
   }
 
   const formatDate = (date: Date): string => {
-    return date.toISOString().split("T")[0]
+    return toLocalISODate(date)
+  }
+
+  const isEmployeeWorkday = (employee: Employee, date: Date): boolean => {
+    const weekday = date.getDay()
+
+    if (employee.turnoId) {
+      const turno = turnos.find((t) => t.id === employee.turnoId)
+      if (turno) {
+        const activeStart = turno.fechaInicio ? toDate(turno.fechaInicio) : undefined
+        const activeEnd = turno.fechaFin ? toDate(turno.fechaFin) : undefined
+        const withinRange = (!activeStart || date >= activeStart) && (!activeEnd || date <= activeEnd)
+
+        if (withinRange) {
+          if (turno.tipo === "fijo" && turno.diasSemana?.length) {
+            return turno.diasSemana.includes(weekday)
+          }
+          if (turno.tipo === "rotativo" && turno.configuracionesDiarias?.length) {
+            return turno.configuracionesDiarias.some((config) => config.dia === weekday)
+          }
+        }
+      }
+    }
+
+    if (employee.diasDescanso?.length) {
+      return !employee.diasDescanso.includes(weekday)
+    }
+
+    return true
   }
 
   const isJustifiedNonAttendance = (novedad: Novedad): boolean => {
@@ -848,7 +894,7 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
     const ingreso = toDate(employee.fechaIngreso)
     const start = toDate(fechaInicio)
     const end = toDate(fechaFin)
-    const today = toDate(new Date().toISOString().split("T")[0])
+    const today = toDate(todayLocalISODate())
 
     const periodStart = ingreso > start ? ingreso : start
     let periodEnd = end
@@ -874,9 +920,8 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
 
     while (current <= periodEnd) {
       const dateStr = formatDate(current)
-      const weekday = current.getDay()
 
-      if (!employee.diasDescanso?.includes(weekday)) {
+      if (isEmployeeWorkday(employee, current)) {
         if (!attendanceDates.has(dateStr) && !nonAttendanceDates.has(dateStr)) {
           absences += 1
         }
@@ -972,11 +1017,11 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
         const turno = turnos.find((t) => t.id === employee.turnoId)
         if (turno) {
           // Verificar si el turno es válido para la fecha
-          const fechaFichada = new Date(fichada.fecha)
+          const fechaFichada = parseLocalDate(fichada.fecha)
           const hoy = new Date()
           hoy.setHours(0, 0, 0, 0)
-          const fechaInicio = turno.fechaInicio ? new Date(turno.fechaInicio) : null
-          const fechaFin = turno.fechaFin ? new Date(turno.fechaFin) : null
+          const fechaInicio = turno.fechaInicio ? parseLocalDate(turno.fechaInicio) : null
+          const fechaFin = turno.fechaFin ? parseLocalDate(turno.fechaFin) : null
           const esValido = (!fechaInicio || fechaFichada >= fechaInicio) && (!fechaFin || fechaFichada <= fechaFin)
 
           if (esValido) {
@@ -1191,7 +1236,7 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const getFichadasHoy = useCallback(() => {
-    const today = new Date().toISOString().split("T")[0]
+    const today = todayLocalISODate()
     return fichadas.filter((f) => f.fecha === today).sort((a, b) => b.hora.localeCompare(a.hora))
   }, [fichadas])
 
@@ -1214,7 +1259,7 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
   const getFichadasByMonth = useCallback(
     (year: number, month: number) => {
       return fichadas.filter((f) => {
-        const date = new Date(f.fecha)
+        const date = parseLocalDate(f.fecha)
         return date.getFullYear() === year && date.getMonth() === month
       })
     },
@@ -1246,7 +1291,7 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
     setNovedades((prev) =>
       prev.map((n) =>
         n.id === id
-          ? { ...n, aprobado: true, aprobadoPor, fechaAprobacion: new Date().toISOString().split("T")[0] }
+          ? { ...n, aprobado: true, aprobadoPor, fechaAprobacion: todayLocalISODate() }
           : n
       )
     )
@@ -1274,7 +1319,7 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
 
   // Statistics
   const getStats = useCallback(() => {
-    const today = new Date().toISOString().split("T")[0]
+    const today = todayLocalISODate()
     const fichadasHoy = fichadas.filter((f) => f.fecha === today)
 
     const presentesHoy = new Set(
@@ -1305,7 +1350,7 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
       return employees.map((emp) => {
         const empFichadas = fichadasMes.filter((f) => f.empleadoId === emp.id)
         const empNovedades = novedades.filter((n) => {
-          const date = new Date(n.fecha)
+          const date = parseLocalDate(n.fecha)
           return n.empleadoId === emp.id && date.getFullYear() === year && date.getMonth() === month
         })
 

@@ -3,6 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { KPICard } from "@/components/dashboard/kpi-card"
 import { useLMSData, type TipoNovedad } from "@/lib/lms-data-context"
+import { parseLocalDate, toLocalISODate } from "@/lib/date-utils"
 import { Users, UserCheck, Clock, AlertTriangle, ArrowUpRight, ArrowDownRight } from "lucide-react"
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from "recharts"
 import { Badge } from "@/components/ui/badge"
@@ -38,7 +39,7 @@ const tipoNovedadColors: Record<TipoNovedad, string> = {
 }
 
 export function DashboardView() {
-  const { getStats, fichadas, novedades, employees, isLoaded } = useLMSData()
+  const { getStats, fichadas, novedades, employees, turnos, isLoaded } = useLMSData()
   
   if (!isLoaded) {
     return <div className="flex items-center justify-center h-64">Cargando...</div>
@@ -51,21 +52,46 @@ export function DashboardView() {
       tipo
     )
 
+  const isEmployeeWorkday = (employee: any, date: Date) => {
+    const weekday = date.getDay()
+
+    if (employee.turnoId) {
+      const turno = turnos.find((t) => t.id === employee.turnoId)
+      if (turno) {
+        const activeStart = turno.fechaInicio ? parseLocalDate(turno.fechaInicio) : undefined
+        const activeEnd = turno.fechaFin ? parseLocalDate(turno.fechaFin) : undefined
+        const withinRange = (!activeStart || date >= activeStart) && (!activeEnd || date <= activeEnd)
+
+        if (withinRange) {
+          if (turno.tipo === "fijo" && turno.diasSemana?.length) {
+            return turno.diasSemana.includes(weekday)
+          }
+          if (turno.tipo === "rotativo" && turno.configuracionesDiarias?.length) {
+            return turno.configuracionesDiarias.some((config) => config.dia === weekday)
+          }
+        }
+      }
+    }
+
+    if (employee.diasDescanso?.length) {
+      return !employee.diasDescanso.includes(weekday)
+    }
+
+    return true
+  }
+
   const getDayAbsences = (dateStr: string) => {
-    const date = new Date(`${dateStr}T00:00:00`)
-    date.setHours(0, 0, 0, 0)
+    const date = parseLocalDate(dateStr)
     const weekday = date.getDay()
 
     return employees.reduce((count, employee) => {
       if (employee.estado !== "activo") return count
 
-      const fechaIngreso = new Date(`${employee.fechaIngreso}T00:00:00`)
-      fechaIngreso.setHours(0, 0, 0, 0)
+      const fechaIngreso = parseLocalDate(employee.fechaIngreso)
       if (date < fechaIngreso) return count
 
       if (employee.fechaBaja) {
-        const fechaBaja = new Date(`${employee.fechaBaja}T00:00:00`)
-        fechaBaja.setHours(0, 0, 0, 0)
+        const fechaBaja = parseLocalDate(employee.fechaBaja)
         if (date > fechaBaja) return count
       }
 
@@ -90,7 +116,7 @@ export function DashboardView() {
   for (let i = 6; i >= 0; i--) {
     const date = new Date()
     date.setDate(date.getDate() - i)
-    const dateStr = date.toISOString().split("T")[0]
+    const dateStr = toLocalISODate(date)
     const dayFichadas = fichadas.filter((f) => f.fecha === dateStr)
     const dayAusencias = getDayAbsences(dateStr)
 
@@ -228,7 +254,7 @@ export function DashboardView() {
                       </div>
                       <p className="text-sm text-muted-foreground">{novedad.descripcion}</p>
                       <p className="text-xs text-muted-foreground">
-                        {new Date(`${novedad.fecha}T00:00:00`).toLocaleDateString("es-AR")}
+                        {parseLocalDate(novedad.fecha).toLocaleDateString("es-AR")}
                       </p>
                     </div>
                     {!novedad.aprobado && (
