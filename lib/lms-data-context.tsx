@@ -157,9 +157,9 @@ export interface Novedad {
   fecha: string
   fechaFin?: string
   descripcion: string
-  aprobado: boolean
-  aprobadoPor?: string
-  fechaAprobacion?: string
+  estado: 'pendiente' | 'aprobada' | 'rechazada'
+  modificadoPor?: string
+  fechaModificacion?: string
   documentoAdjunto?: string
   turnoAnterior?: string
   turnoNuevo?: string
@@ -211,7 +211,7 @@ interface LMSDataContextType {
   addNovedad: (novedad: Omit<Novedad, "id">) => void
   updateNovedad: (id: string, data: Partial<Novedad>) => void
   deleteNovedad: (id: string) => void
-  aprobarNovedad: (id: string, aprobadoPor: string) => void
+  gestionarEstadoNovedad: (id: string, nuevoEstado: 'aprobada' | 'rechazada', usuarioId: string) => void
   getNovedadesByEmployee: (empleadoId: string) => Novedad[]
   getNovedadesByEmployeeAndPeriod: (empleadoId: string, fechaInicio: string, fechaFin: string) => Novedad[]
   getNovedadesPendientes: () => Novedad[]
@@ -435,7 +435,7 @@ const defaultNovedades: Novedad[] = [
     tipo: "tardanza",
     fecha: todayLocalISODate(),
     descripcion: "Llegó 45 minutos tarde por problemas de transporte",
-    aprobado: false
+    estado: "pendiente"
   },
   {
     id: "n2",
@@ -444,9 +444,9 @@ const defaultNovedades: Novedad[] = [
     tipo: "horaExtra",
     fecha: toLocalISODate(new Date(Date.now() - 86400000)),
     descripcion: "Realizó 2 horas extra para completar envío urgente",
-    aprobado: true,
-    aprobadoPor: "Admin",
-    fechaAprobacion: toLocalISODate(new Date(Date.now() - 43200000))
+    estado: "aprobada",
+    modificadoPor: "Admin",
+    fechaModificacion: new Date(Date.now() - 43200000).toISOString()
   },
   {
     id: "n3",
@@ -455,7 +455,7 @@ const defaultNovedades: Novedad[] = [
     tipo: "ausencia",
     fecha: toLocalISODate(new Date(Date.now() - 172800000)),
     descripcion: "Ausente sin aviso previo",
-    aprobado: false
+    estado: "pendiente"
   },
   {
     id: "n4",
@@ -465,9 +465,9 @@ const defaultNovedades: Novedad[] = [
     fecha: toLocalISODate(new Date(Date.now() - 432000000)),
     fechaFin: toLocalISODate(new Date(Date.now() + 864000000)),
     descripcion: "Licencia por maternidad",
-    aprobado: true,
-    aprobadoPor: "RRHH",
-    fechaAprobacion: toLocalISODate(new Date(Date.now() - 604800000))
+    estado: "aprobada",
+    modificadoPor: "RRHH",
+    fechaModificacion: new Date(Date.now() - 604800000).toISOString()
   },
   {
     id: "n5",
@@ -476,9 +476,10 @@ const defaultNovedades: Novedad[] = [
     tipo: "justificativo",
     fecha: toLocalISODate(new Date(Date.now() - 259200000)),
     descripcion: "Turno médico programado - Adjunta certificado",
-    aprobado: true,
-    aprobadoPor: "RRHH",
-    documentoAdjunto: "certificado_medico.pdf"
+    estado: "aprobada",
+    modificadoPor: "RRHH",
+    documentoAdjunto: "certificado_medico.pdf",
+    fechaModificacion: new Date(Date.now() - 259200000).toISOString()
   },
   {
     id: "n6",
@@ -487,9 +488,11 @@ const defaultNovedades: Novedad[] = [
     tipo: "cambioTurno",
     fecha: toLocalISODate(new Date(Date.now() - 604800000)),
     descripcion: "Cambio de turno mañana a tarde por necesidades operativas",
-    aprobado: true,
+    estado: "aprobada",
     turnoAnterior: "Mañana",
-    turnoNuevo: "Tarde"
+    turnoNuevo: "Tarde",
+    modificadoPor: "Admin",
+    fechaModificacion: new Date(Date.now() - 604800000).toISOString()
   }
 ]
 
@@ -623,7 +626,7 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
       if (emp.turnoRotativo && emp.turnoRotativo.turnos.length > 0) {
         const esValido = emp.turnoRotativo.turnos.every((turnoId) => {
           const turno = turnos.find((t) => t.id === turnoId)
-          if (!turno || turno.tipo !== "rotativo") return false
+          if (!turno) return false
           const fechaFin = turno.fechaFin ? parseLocalDate(turno.fechaFin) : null
           return !fechaFin || hoy <= fechaFin
         })
@@ -948,7 +951,7 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
           tipo: "fichaIncompleta",
           fecha,
           descripcion: `Entrada registrada a las ${entrada.hora} pero sin fichada de salida. Jornada incompleta.`,
-          aprobado: false,
+          estado: "pendiente",
         }
       }
     }
@@ -987,7 +990,7 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
         tipo: "ausencia",
         fecha,
         descripcion: `Trabajó solo ${Math.round(porcentajeTrabajado * 100)}% de la jornada (${Math.floor(minutosTrabajados / 60)}h ${minutosTrabajados % 60}min)`,
-        aprobado: false,
+        estado: "pendiente",
       }
     } else if (porcentajeTrabajado < 1) {
       return {
@@ -997,7 +1000,7 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
         tipo: "mediaAusencia",
         fecha,
         descripcion: `Media ausencia: trabajó ${Math.round(porcentajeTrabajado * 100)}% de la jornada (${Math.floor(minutosTrabajados / 60)}h ${minutosTrabajados % 60}min)`,
-        aprobado: false,
+        estado: "pendiente",
       }
     }
 
@@ -1011,11 +1014,46 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
       let esTardanza = false
       let minutosExtra = 0
 
-      if (employee?.turnoId && (fichada.tipo === "entrada" || fichada.tipo === "salida")) {
-        const turno = turnos.find((t) => t.id === employee.turnoId)
+      // Determine effective turno for this employee on the fichada date.
+      const fechaFichada = parseLocalDate(fichada.fecha)
+      if (fichada.tipo === "entrada" || fichada.tipo === "salida") {
+        let turno = null as Turno | null | undefined
+
+        // Prefer explicit turnoId
+        if (employee?.turnoId) {
+          turno = turnos.find((t) => t.id === employee.turnoId)
+        }
+
+        // If no explicit turno, try rotativo assignment
+        if (!turno && employee?.turnoRotativo && employee.turnoRotativo.turnos.length > 0) {
+          const diaSemana = fechaFichada.getDay()
+          for (const turnoId of employee.turnoRotativo.turnos) {
+            const t = turnos.find((x) => x.id === turnoId)
+            if (!t) continue
+            const fechaInicio = t.fechaInicio ? parseLocalDate(t.fechaInicio) : null
+            const fechaFin = t.fechaFin ? parseLocalDate(t.fechaFin) : null
+            const esValido = (!fechaInicio || fechaFichada >= fechaInicio) && (!fechaFin || fechaFichada <= fechaFin)
+            if (!esValido) continue
+
+            if (t.tipo === "rotativo" && t.configuracionesDiarias?.some((c) => c.dia === diaSemana)) {
+              turno = t
+              break
+            }
+
+            if (t.tipo === "fijo" && t.diasSemana?.includes(diaSemana)) {
+              turno = t
+              break
+            }
+
+            if (t.tipo === "flexible" || t.tipo === "reducida") {
+              turno = t
+              break
+            }
+          }
+        }
+
         if (turno) {
           // Verificar si el turno es válido para la fecha
-          const fechaFichada = parseLocalDate(fichada.fecha)
           const hoy = new Date()
           hoy.setHours(0, 0, 0, 0)
           const fechaInicio = turno.fechaInicio ? parseLocalDate(turno.fechaInicio) : null
@@ -1031,7 +1069,7 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
               horaSalidaTurno = turno.horaSalida
             } else if (turno.tipo === "rotativo" && turno.configuracionesDiarias) {
               const diaSemana = fechaFichada.getDay() // 0=Domingo, 1=Lunes, etc
-              const configDia = turno.configuracionesDiarias.find(c => c.dia === diaSemana)
+              const configDia = turno.configuracionesDiarias.find((c) => c.dia === diaSemana)
               if (configDia) {
                 horaEntradaTurno = configDia.horaEntrada
                 horaSalidaTurno = configDia.horaSalida
@@ -1061,10 +1099,8 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
               } else if (fichada.tipo === "salida") {
                 if (turno.tipo === "flexible" && turno.horasTotales) {
                   // Para flexible, calcular horas trabajadas
-                  const entradaHoy = fichadas.find(f =>
-                    f.empleadoId === fichada.empleadoId &&
-                    f.fecha === fichada.fecha &&
-                    f.tipo === "entrada"
+                  const entradaHoy = fichadas.find(
+                    (f) => f.empleadoId === fichada.empleadoId && f.fecha === fichada.fecha && f.tipo === "entrada"
                   )
                   if (entradaHoy) {
                     const minutosEntrada = parseTimeToMinutes(entradaHoy.hora)
@@ -1105,7 +1141,7 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
           tipo: "tardanza",
           fecha: newFichada.fecha,
           descripcion: `Llegada tarde registrada a las ${newFichada.hora}`,
-          aprobado: false,
+          estado: "pendiente",
         }
         setNovedades((prev) => [novedadTardanza, ...prev])
       }
@@ -1126,7 +1162,7 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
             tipo: "horaExtra",
             fecha: newFichada.fecha,
             descripcion: `${Math.floor(newFichada.minutosExtra / 60)}h ${newFichada.minutosExtra % 60}min extra`,
-            aprobado: false,
+            estado: "pendiente",
           }
           setNovedades((prev) => [novedadExtra, ...prev])
         }
@@ -1171,7 +1207,7 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
             tipo: "tardanza",
             fecha: newFichada.fecha,
             descripcion: `Llegada tarde registrada a las ${newFichada.hora}`,
-            aprobado: false,
+            estado: "pendiente",
           })
         }
 
@@ -1189,7 +1225,7 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
               tipo: "horaExtra",
               fecha: newFichada.fecha,
               descripcion: `${Math.floor(newFichada.minutosExtra / 60)}h ${newFichada.minutosExtra % 60}min extra`,
-              aprobado: false,
+              estado: "pendiente",
             })
           }
         }
@@ -1285,11 +1321,11 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
     setNovedades((prev) => prev.filter((n) => n.id !== id))
   }, [])
 
-  const aprobarNovedad = useCallback((id: string, aprobadoPor: string) => {
+  const gestionarEstadoNovedad = useCallback((id: string, nuevoEstado: 'aprobada' | 'rechazada', usuarioId: string) => {
     setNovedades((prev) =>
       prev.map((n) =>
         n.id === id
-          ? { ...n, aprobado: true, aprobadoPor, fechaAprobacion: todayLocalISODate() }
+          ? { ...n, estado: nuevoEstado, modificadoPor: usuarioId, fechaModificacion: new Date().toISOString() }
           : n
       )
     )
@@ -1312,7 +1348,7 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
   )
 
   const getNovedadesPendientes = useCallback(() => {
-    return novedades.filter((n) => !n.aprobado)
+    return novedades.filter((n) => n.estado === 'pendiente')
   }, [novedades])
 
   // Statistics
@@ -1326,7 +1362,7 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
 
     const tardanzas = fichadasHoy.filter((f) => f.esTardanza).length
 
-    const pendientes = novedades.filter((n) => !n.aprobado).length
+    const pendientes = novedades.filter((n) => n.estado === 'pendiente').length
     const enLicencia = employees.filter((e) => e.estado === "licencia").length
     const suspendidos = employees.filter((e) => e.estado === "suspendido").length
 
@@ -1475,7 +1511,7 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
         addNovedad,
         updateNovedad,
         deleteNovedad,
-        aprobarNovedad,
+        gestionarEstadoNovedad,
         getNovedadesByEmployee,
         getNovedadesByEmployeeAndPeriod,
         getNovedadesPendientes,

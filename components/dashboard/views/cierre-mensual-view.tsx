@@ -790,6 +790,11 @@ export function CierreMensualView() {
                         <p className="text-xs text-muted-foreground">
                           {parseLocalDate(novedad.fecha).toLocaleDateString("es-AR")}
                         </p>
+                        {novedad.estado !== 'pendiente' && novedad.modificadoPor && novedad.fechaModificacion && (
+                          <p className="text-xs text-muted-foreground italic pt-1">
+                            {novedad.modificadoPor} - {new Date(novedad.fechaModificacion).toLocaleDateString("es-AR")} {new Date(novedad.fechaModificacion).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
+                          </p>
+                        )}
                       </div>
                     </div>
                   ))}
