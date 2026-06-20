@@ -11,14 +11,16 @@ import {
   HelpCircle,
   LogOut,
   Building2,
+  Calculator,
 } from "lucide-react"
 
-export type ViewType = "dashboard" | "fichadas" | "employees" | "cierre" | "empleado-fichadas"
+export type ViewType = "dashboard" | "fichadas" | "employees" | "accountants" | "cierre" | "empleado-fichadas"
 
 const navigation: { name: string; view: ViewType; icon: typeof LayoutDashboard; roles: string[] }[] = [
   { name: "Dashboard", view: "dashboard", icon: LayoutDashboard, roles: ["admin"] },
   { name: "Fichadas del Día", view: "fichadas", icon: Clock, roles: ["admin"] },
   { name: "Empleados", view: "employees", icon: Users, roles: ["admin"] },
+  { name: "Contadores", view: "accountants", icon: Calculator, roles: ["admin"] },
   { name: "Cierre Mensual", view: "cierre", icon: FileText, roles: ["admin", "contador"] },
   { name: "Mis Fichadas", view: "empleado-fichadas", icon: Clock, roles: ["empleado"] },
 ]

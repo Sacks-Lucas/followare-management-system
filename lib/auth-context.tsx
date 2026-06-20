@@ -1,7 +1,7 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react"
-import { EMPLOYEES_KEY, normalizeUserCredential, ensureEmployeeCredentials, type Employee } from "./lms-data-context"
+import { EMPLOYEES_KEY, CONTADORES_KEY, normalizeUserCredential, ensureEmployeeCredentials, type Employee } from "./lms-data-context"
 
 export type UserRole = "admin" | "empleado" | "contador"
 
@@ -26,6 +26,33 @@ const VALID_USERS: Record<string, { password: string; role: UserRole; employeeId
   admin: { password: "admin", role: "admin" },
   contador: { password: "contador", role: "contador" },
   empleado: { password: "empleado", role: "empleado", employeeId: "5" },
+}
+
+const loadStoredContadores = (): Array<{ username: string; password: string; id: string; nombre: string; apellido: string }> => {
+  if (typeof window === "undefined") return []
+  try {
+    const stored = localStorage.getItem(CONTADORES_KEY)
+    if (!stored) return []
+    const contadores = JSON.parse(stored)
+    if (!Array.isArray(contadores)) return []
+
+    return contadores
+      .filter(
+        (c): c is { username: string; password: string; id: string; nombre: string; apellido: string } =>
+          typeof c?.username === "string" &&
+          typeof c?.password === "string" &&
+          typeof c?.id === "string"
+      )
+      .map((c) => ({
+        username: c.username,
+        password: c.password,
+        id: c.id,
+        nombre: c.nombre,
+        apellido: c.apellido,
+      }))
+  } catch {
+    return []
+  }
 }
 
 const loadStoredEmployees = (): Array<{ username: string; password: string; employeeId: string; nombre: string; apellido: string }> => {
@@ -87,6 +114,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         username: `${employeeMatch.nombre} ${employeeMatch.apellido}`,
         role: "empleado",
         employeeId: employeeMatch.employeeId,
+      }
+      setUser(newUser)
+      localStorage.setItem("auth_user", JSON.stringify(newUser))
+      return true
+    }
+
+    const contadorMatch = loadStoredContadores().find(
+      (c) => normalizeUserCredential(c.username).toLowerCase() === normalizeUserCredential(username).toLowerCase() &&
+      c.password === password
+    )
+
+    if (contadorMatch) {
+      const newUser: User = {
+        username: `${contadorMatch.nombre} ${contadorMatch.apellido}`,
+        role: "contador",
+        employeeId: contadorMatch.id,
       }
       setUser(newUser)
       localStorage.setItem("auth_user", JSON.stringify(newUser))

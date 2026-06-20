@@ -9,6 +9,7 @@ import { LMSDataProvider } from "@/lib/lms-data-context"
 import { DashboardView } from "@/components/dashboard/views/dashboard-view"
 import { FichadasView } from "@/components/dashboard/views/fichadas-view"
 import { EmployeesView } from "@/components/dashboard/views/employees-view"
+import { AccountantsView } from "@/components/dashboard/views/accountants-view"
 import { CierreMensualView } from "@/components/dashboard/views/cierre-mensual-view"
 import { EmpleadoFichadasView } from "@/components/dashboard/views/empleado-fichadas-view"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -95,6 +96,7 @@ const viewComponents: Record<ViewType, React.ComponentType> = {
   dashboard: DashboardView,
   fichadas: FichadasView,
   employees: EmployeesView,
+  accountants: AccountantsView,
   cierre: CierreMensualView,
   "empleado-fichadas": EmpleadoFichadasView,
 }
@@ -137,7 +139,7 @@ export default function DashboardPage() {
   }
 
   // Default to dashboard if view is invalid
-  const validViews: ViewType[] = ["dashboard", "fichadas", "employees", "cierre", "empleado-fichadas"]
+  const validViews: ViewType[] = ["dashboard", "fichadas", "employees", "accountants", "cierre", "empleado-fichadas"]
   const safeView = validViews.includes(activeView) ? activeView : "dashboard"
   const ActiveComponent = viewComponents[safeView] || DashboardView
 

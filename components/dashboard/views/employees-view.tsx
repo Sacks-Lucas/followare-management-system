@@ -179,6 +179,7 @@ export function EmployeesView() {
     employees,
     addEmployee,
     updateEmployee,
+    isUsernameTaken,
     darDeBajaEmployee,
     turnos,
     addTurno,
@@ -338,6 +339,16 @@ export function EmployeesView() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
+    const desiredUsername = formData.username.trim()
+    if (desiredUsername && isUsernameTaken(desiredUsername, editingEmployee?.id)) {
+      toast({
+        title: "Usuario no disponible",
+        description: `El usuario "${desiredUsername}" ya está en uso. Elegí otro.`,
+        variant: "destructive",
+      })
+      return
+    }
 
     if (editingEmployee) {
       updateEmployee(editingEmployee.id, formData)

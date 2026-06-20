@@ -64,7 +64,22 @@ export interface Employee {
   password?: string
 }
 
+export interface Contador {
+  id: string
+  legajo: string
+  nombre: string
+  apellido: string
+  dni: string
+  cuil: string
+  email: string
+  telefono: string
+  estado: "activo" | "inactivo"
+  username?: string
+  password?: string
+}
+
 export const EMPLOYEES_KEY = "lms-employees"
+export const CONTADORES_KEY = "lms-contadores"
 export const RESERVED_USERNAMES = new Set(["admin", "contador", "empleado"])
 
 export const normalizeUserCredential = (value: string) => {
@@ -191,6 +206,12 @@ interface LMSDataContextType {
   darDeBajaEmployee: (id: string, fechaBaja: string) => void
   getEmployeeById: (id: string) => Employee | undefined
   assignTurno: (empleadoId: string, turnoId: string) => void
+  // Contadores
+  contadores: Contador[]
+  addContador: (contador: Omit<Contador, "id">) => Contador
+  updateContador: (id: string, data: Partial<Contador>) => void
+  deleteContador: (id: string) => void
+  isUsernameTaken: (username: string, excludeId?: string) => boolean
   assignTurnoRotativo: (empleadoId: string, turnoIds: string[]) => void
   getEmployeeStats: (empleadoId: string, fechaInicio: string, fechaFin: string) => EmployeeStats
 
@@ -353,6 +374,22 @@ const defaultEmployees: Employee[] = [
   },
 ]
 
+const defaultContadores: Contador[] = [
+  {
+    id: "contador-1",
+    legajo: "CONT001",
+    nombre: "Carlos",
+    apellido: "Contreras",
+    dni: "28111222",
+    cuil: "20-28111222-3",
+    email: "contador@empresa.com",
+    telefono: "1144556677",
+    estado: "activo",
+    username: "contador",
+    password: "contador",
+  },
+]
+
 const generateDefaultFichadas = (): Fichada[] => {
   const fichadas: Fichada[] = []
   const today = new Date()
@@ -496,6 +533,7 @@ const defaultNovedades: Novedad[] = [
 export function LMSDataProvider({ children }: { children: ReactNode }) {
   const [turnos, setTurnos] = useState<Turno[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
+  const [contadores, setContadores] = useState<Contador[]>([])
   const [fichadas, setFichadas] = useState<Fichada[]>([])
   const [novedades, setNovedades] = useState<Novedad[]>([])
   const [isLoaded, setIsLoaded] = useState(false)
@@ -564,6 +602,25 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
     }
 
     loadEmployees()
+
+    const storedContadores = localStorage.getItem(CONTADORES_KEY)
+    if (storedContadores) {
+      try {
+        const parsedContadores = JSON.parse(storedContadores)
+        if (Array.isArray(parsedContadores)) {
+          setContadores(parsedContadores)
+        } else {
+          setContadores(defaultContadores)
+          localStorage.setItem(CONTADORES_KEY, JSON.stringify(defaultContadores))
+        }
+      } catch {
+        setContadores(defaultContadores)
+        localStorage.setItem(CONTADORES_KEY, JSON.stringify(defaultContadores))
+      }
+    } else {
+      setContadores(defaultContadores)
+      localStorage.setItem(CONTADORES_KEY, JSON.stringify(defaultContadores))
+    }
 
     if (storedFichadas) {
       try {
@@ -658,6 +715,12 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (isLoaded) {
+      localStorage.setItem(CONTADORES_KEY, JSON.stringify(contadores))
+    }
+  }, [contadores, isLoaded])
+
+  useEffect(() => {
+    if (isLoaded) {
       localStorage.setItem(FICHADAS_KEY, JSON.stringify(fichadas))
     }
   }, [fichadas, isLoaded])
@@ -691,8 +754,8 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
     (employee: Omit<Employee, "id">): Employee => {
       const estadoTurno = getEstadoTurno(employee)
       const existingUsernames = new Set(
-        employees
-          .map((emp) => emp.username?.toLowerCase())
+        [...employees, ...contadores]
+          .map((u) => u.username?.toLowerCase())
           .filter((username): username is string => Boolean(username))
       )
       // Si el admin cargó usuario/contraseña, se respetan; si no, se autogeneran.
@@ -712,7 +775,7 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
       setEmployees((prev) => [...prev, newEmployee])
       return newEmployee
     },
-    [getEstadoTurno, employees]
+    [getEstadoTurno, employees, contadores]
   )
 
   const updateEmployee = useCallback((id: string, data: Partial<Employee>) => {
@@ -748,6 +811,72 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
   const getEmployeeById = useCallback((id: string) => {
     return employees.find((emp) => emp.id === id)
   }, [employees])
+
+  // Valida que un usuario no esté tomado por otro empleado, contador o usuario reservado.
+  const isUsernameTaken = useCallback(
+    (username: string, excludeId?: string): boolean => {
+      const normalized = normalizeUserCredential(username).toLowerCase()
+      if (!normalized) return false
+
+      // El registro en edición puede conservar su propio usuario (incluso si es reservado).
+      const self = [...employees, ...contadores].find((u) => u.id === excludeId)
+      if (self?.username && normalizeUserCredential(self.username).toLowerCase() === normalized) {
+        return false
+      }
+
+      const taken = new Set<string>(RESERVED_USERNAMES)
+      employees.forEach((e) => {
+        if (e.id !== excludeId && e.username) taken.add(normalizeUserCredential(e.username).toLowerCase())
+      })
+      contadores.forEach((c) => {
+        if (c.id !== excludeId && c.username) taken.add(normalizeUserCredential(c.username).toLowerCase())
+      })
+      return taken.has(normalized)
+    },
+    [employees, contadores]
+  )
+
+  // Contador functions
+  const addContador = useCallback(
+    (contador: Omit<Contador, "id">): Contador => {
+      const existingUsernames = new Set(
+        [...employees, ...contadores]
+          .map((u) => u.username?.toLowerCase())
+          .filter((username): username is string => Boolean(username))
+      )
+      // Si el admin cargó usuario/contraseña, se respetan; si no, se autogeneran.
+      const providedUsername = contador.username?.trim()
+      const providedPassword = contador.password?.trim()
+      const username =
+        providedUsername ||
+        generateEmployeeCredentials(contador.nombre, contador.apellido, existingUsernames).username
+      const password = providedPassword || username
+      const newContador: Contador = {
+        ...contador,
+        id: crypto.randomUUID(),
+        username,
+        password,
+      }
+      setContadores((prev) => [...prev, newContador])
+      return newContador
+    },
+    [employees, contadores]
+  )
+
+  const updateContador = useCallback((id: string, data: Partial<Contador>) => {
+    setContadores((prev) =>
+      prev.map((c) => {
+        if (c.id !== id) return c
+        const username = data.username?.trim() || c.username
+        const password = data.password?.trim() || c.password
+        return { ...c, ...data, username, password }
+      })
+    )
+  }, [])
+
+  const deleteContador = useCallback((id: string) => {
+    setContadores((prev) => prev.filter((c) => c.id !== id))
+  }, [])
 
   const assignTurno = useCallback(
     (empleadoId: string, turnoId: string) => {
@@ -1458,6 +1587,11 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
         assignTurno,
         assignTurnoRotativo,
         getEmployeeStats,
+        contadores,
+        addContador,
+        updateContador,
+        deleteContador,
+        isUsernameTaken,
         fichadas,
         addFichada,
         addFichadasMasivas,
