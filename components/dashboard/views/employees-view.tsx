@@ -23,6 +23,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useLMSData, type Employee, type TipoNovedad, type TipoJornada, type ModalidadFichada, type MetodoFichada, type TipoFichada } from "@/lib/lms-data-context"
+import { useAuth } from "@/lib/auth-context"
 import { parseLocalDate, toLocalISODate, todayLocalISODate } from "@/lib/date-utils"
 import {
   Users,
@@ -188,6 +189,9 @@ export function EmployeesView() {
     isLoaded,
   } = useLMSData()
 
+  const { user } = useAuth()
+  const isAdmin = user?.role === "admin"
+
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -333,6 +337,14 @@ export function EmployeesView() {
     if (editingEmployee) {
       updateEmployee(editingEmployee.id, formData)
     } else {
+      if (!isAdmin) {
+        toast({
+          title: "Acción no permitida",
+          description: "Solo un administrador puede crear empleados.",
+          variant: "destructive",
+        })
+        return
+      }
       const createdEmployee = addEmployee(formData)
       showCreatedCredentialsToast(createdEmployee)
     }
@@ -362,6 +374,13 @@ export function EmployeesView() {
       modalidadFichada: "todas",
     })
     setEditingEmployee(null)
+  }
+
+  const handleOpenCreate = () => {
+    if (!isAdmin) return
+    resetForm()
+    setFormData((prev) => ({ ...prev, legajo: generateLegajo() }))
+    setIsDialogOpen(true)
   }
 
   const handleEdit = (employee: Employee) => {
@@ -449,6 +468,7 @@ export function EmployeesView() {
 
   // Excel Import Functions
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!isAdmin) return
     const file = e.target.files?.[0]
     if (!file) return
 
@@ -715,6 +735,14 @@ export function EmployeesView() {
   }
 
   const handleConfirmImport = () => {
+    if (!isAdmin) {
+      toast({
+        title: "Acción no permitida",
+        description: "Solo un administrador puede importar empleados.",
+        variant: "destructive",
+      })
+      return
+    }
     setIsImporting(true)
 
     const validEmployees = importPreview
@@ -856,6 +884,7 @@ export function EmployeesView() {
               accept=".xlsx,.xls"
               className="hidden"
             />
+            {isAdmin && (
             <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
               <Upload className="mr-2 h-4 w-4" />
@@ -875,6 +904,7 @@ export function EmployeesView() {
               </TooltipContent>
             </Tooltip>
           </div>
+          )}
 
             <Dialog open={isTurnoDialogOpen} onOpenChange={setIsTurnoDialogOpen}>
               <DialogTrigger asChild>
@@ -1285,12 +1315,6 @@ export function EmployeesView() {
                 }
               }}
             >
-              <DialogTrigger asChild>
-                <Button>
-                  <UserPlus className="mr-2 h-4 w-4" />
-                  Nuevo Empleado
-                </Button>
-              </DialogTrigger>
               <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>
@@ -1636,13 +1660,23 @@ export function EmployeesView() {
         {/* Employees Table */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Lista de Empleados
-            </CardTitle>
-            <CardDescription>
-              {filteredEmployees.length} empleados encontrados
-            </CardDescription>
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1.5">
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  Lista de Empleados
+                </CardTitle>
+                <CardDescription>
+                  {filteredEmployees.length} empleados encontrados
+                </CardDescription>
+              </div>
+              {isAdmin && (
+                <Button onClick={handleOpenCreate}>
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  Nuevo Empleado
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             <Table>
@@ -1653,7 +1687,6 @@ export function EmployeesView() {
                   <TableHead>DNI</TableHead>
                   <TableHead>Departamento</TableHead>
                   <TableHead>Usuario</TableHead>
-                  <TableHead>Contraseña</TableHead>
                   <TableHead>Cargo</TableHead>
                   <TableHead>Jornada</TableHead>
                   <TableHead>Estado</TableHead>
@@ -1664,7 +1697,7 @@ export function EmployeesView() {
               <TableBody>
                 {filteredEmployees.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                       No se encontraron empleados
                     </TableCell>
                   </TableRow>
@@ -1684,7 +1717,6 @@ export function EmployeesView() {
                       <TableCell>{emp.dni}</TableCell>
                       <TableCell>{emp.departamento}</TableCell>
                       <TableCell className="font-mono">{emp.username || '-'}</TableCell>
-                      <TableCell className="font-mono">{emp.password || '-'}</TableCell>
                       <TableCell>{emp.cargo}</TableCell>
                       <TableCell>
                         <Badge variant="outline">
