@@ -1,7 +1,7 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react"
-import { EMPLOYEES_KEY, normalizeUserCredential, ensureEmployeeCredentials } from "./lms-data-context"
+import { EMPLOYEES_KEY, normalizeUserCredential, ensureEmployeeCredentials, type Employee } from "./lms-data-context"
 
 export type UserRole = "admin" | "empleado" | "contador"
 
@@ -39,7 +39,7 @@ const loadStoredEmployees = (): Array<{ username: string; password: string; empl
     const existingUsernames = new Set<string>()
     return employees
       .map((emp) => ensureEmployeeCredentials(emp, existingUsernames))
-      .filter((emp): emp is { username: string; password: string; employeeId: string; nombre: string; apellido: string } =>
+      .filter((emp): emp is Employee & { username: string; password: string } =>
         typeof emp.username === "string" &&
         typeof emp.password === "string" &&
         typeof emp.id === "string"

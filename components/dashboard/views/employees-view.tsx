@@ -45,6 +45,8 @@ import {
   XCircle,
   Download,
   Info,
+  Eye,
+  EyeOff,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -195,6 +197,7 @@ export function EmployeesView() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const [isTurnoDialogOpen, setIsTurnoDialogOpen] = useState(false)
   const [isBajaDialogOpen, setIsBajaDialogOpen] = useState(false)
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
@@ -239,6 +242,8 @@ export function EmployeesView() {
     turnoId: "",
     diasDescanso: [0, 6] as number[],
     modalidadFichada: "todas" as ModalidadFichada,
+    username: "",
+    password: "",
   })
 
   // Turno form state
@@ -372,8 +377,11 @@ export function EmployeesView() {
       turnoId: "",
       diasDescanso: [0, 6],
       modalidadFichada: "todas",
+      username: "",
+      password: "",
     })
     setEditingEmployee(null)
+    setShowPassword(false)
   }
 
   const handleOpenCreate = () => {
@@ -403,7 +411,10 @@ export function EmployeesView() {
       turnoId: employee.turnoId || "",
       diasDescanso: employee.diasDescanso || [0, 6],
       modalidadFichada: employee.modalidadFichada || "todas",
+      username: employee.username || "",
+      password: employee.password || "",
     })
+    setShowPassword(false)
     setIsDialogOpen(true)
   }
 
@@ -1415,6 +1426,51 @@ export function EmployeesView() {
                             setFormData((prev) => ({ ...prev, telefono: e.target.value }))
                           }
                         />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Credenciales de Acceso */}
+                  <div className="space-y-4">
+                    <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
+                      Credenciales de Acceso
+                    </h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="username">Usuario</Label>
+                        <Input
+                          id="username"
+                          value={formData.username}
+                          onChange={(e) =>
+                            setFormData((prev) => ({ ...prev, username: e.target.value }))
+                          }
+                          placeholder={editingEmployee ? "" : "Se genera automáticamente si lo dejás vacío"}
+                          autoComplete="off"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="password">Contraseña</Label>
+                        <div className="relative">
+                          <Input
+                            id="password"
+                            type={showPassword ? "text" : "password"}
+                            value={formData.password}
+                            onChange={(e) =>
+                              setFormData((prev) => ({ ...prev, password: e.target.value }))
+                            }
+                            placeholder={editingEmployee ? "" : "Igual al usuario si la dejás vacía"}
+                            autoComplete="new-password"
+                            className="pr-10"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword((v) => !v)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                            aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                          >
+                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>

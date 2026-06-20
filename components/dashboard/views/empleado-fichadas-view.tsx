@@ -173,6 +173,7 @@ export function EmpleadoFichadasView() {
     () =>
       employeeFichadasSorted.map((f) => ({
         ...f,
+        ubicacion: f.ubicacion ?? "",
         resultado: "",
         status: "normal",
       })),
@@ -260,7 +261,7 @@ export function EmpleadoFichadasView() {
     return parseTimeToMinutes(turno.horaSalida)
   }
 
-  const isEarlyExit = (row: EmpleadoRow): boolean => {
+  const isEarlyExit = (row: Pick<EmpleadoRow, "tipo" | "fecha" | "hora">): boolean => {
     if (row.tipo !== "salida") return false
     const expectedExit = getExpectedExitMinutes(row.fecha)
     if (expectedExit === null) return false

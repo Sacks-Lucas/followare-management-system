@@ -695,13 +695,19 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
           .map((emp) => emp.username?.toLowerCase())
           .filter((username): username is string => Boolean(username))
       )
-      const credentials = generateEmployeeCredentials(employee.nombre, employee.apellido, existingUsernames)
+      // Si el admin cargó usuario/contraseña, se respetan; si no, se autogeneran.
+      const providedUsername = employee.username?.trim()
+      const providedPassword = employee.password?.trim()
+      const username =
+        providedUsername ||
+        generateEmployeeCredentials(employee.nombre, employee.apellido, existingUsernames).username
+      const password = providedPassword || username
       const newEmployee: Employee = {
         ...employee,
         id: crypto.randomUUID(),
         estadoTurno,
-        username: credentials.username,
-        password: credentials.password,
+        username,
+        password,
       }
       setEmployees((prev) => [...prev, newEmployee])
       return newEmployee
@@ -714,27 +720,16 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
       prev.map((emp) => {
         if (emp.id !== id) return emp
 
-        const nombreActualizado = data.nombre ?? emp.nombre
-        const apellidoActualizado = data.apellido ?? emp.apellido
-        const credentials =
-          data.nombre || data.apellido
-            ? generateEmployeeCredentials(
-                nombreActualizado,
-                apellidoActualizado,
-                new Set(
-                  prev
-                    .filter((other) => other.id !== id)
-                    .map((other) => other.username?.toLowerCase())
-                    .filter((username): username is string => Boolean(username))
-                )
-              )
-            : { username: emp.username, password: emp.password }
+        // El admin controla las credenciales: si vienen con valor, se usan;
+        // si llegan vacías, se conservan las existentes.
+        const username = data.username?.trim() || emp.username
+        const password = data.password?.trim() || emp.password
 
         return {
           ...emp,
           ...data,
-          username: credentials.username,
-          password: credentials.password,
+          username,
+          password,
         }
       })
     )
