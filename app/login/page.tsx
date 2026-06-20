@@ -100,17 +100,6 @@ export default function LoginPage() {
             >
               {loading ? "Iniciando sesión..." : "Iniciar Sesión"}
             </Button>
-
-            {/* Demo Credentials */}
-            <div className="rounded-lg bg-blue-50 p-4 text-sm space-y-2 border border-blue-200">
-              <p className="font-semibold text-blue-900">Credenciales de prueba:</p>
-              <div className="text-blue-800 space-y-1 text-xs">
-                <p><strong>Admin:</strong> admin / admin</p>
-                <p><strong>Empleado de ejemplo:</strong> empleado / empleado</p>
-                <p><strong>Contador:</strong> contador / contador</p>
-                <p className="mt-2">Los empleados importados usan su nombre completo sin espacios ni tildes como usuario y contraseña.</p>
-              </div>
-            </div>
           </form>
         </CardContent>
       </Card>
