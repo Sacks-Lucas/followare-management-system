@@ -118,6 +118,7 @@ export function EmpleadoFichadasView() {
     getNovedadesByEmployee,
     getTurnoById,
     addNovedad,
+    actualizarEstadoFichada,
     isLoaded,
   } = useLMSData()
 
@@ -149,6 +150,7 @@ export function EmpleadoFichadasView() {
 
   type EmpleadoRow = {
     id: string
+    fichada?: Fichada
     fecha: string
     hora: string
     tipo: Fichada["tipo"] | "ausencia" | "mediaAusencia"
@@ -156,6 +158,7 @@ export function EmpleadoFichadasView() {
     ubicacion: string
     resultado: string
     status: "approved" | "pending" | "normal"
+    fichadaEstado?: "ok" | "pendiente"
     justificativo?: Novedad
     ausenciaNovedad?: Novedad
     esTardanza?: boolean
@@ -173,9 +176,11 @@ export function EmpleadoFichadasView() {
     () =>
       employeeFichadasSorted.map((f) => ({
         ...f,
+        fichada: f,
         ubicacion: f.ubicacion ?? "",
         resultado: "",
         status: "normal",
+        fichadaEstado: f.estado,
       })),
     [employeeFichadasSorted]
   )
@@ -324,6 +329,21 @@ export function EmpleadoFichadasView() {
     }
   }
 
+  const handleAprobarFichada = (row: EmpleadoRow) => {
+    if (!row.fichada) {
+      console.error("No hay fichada para aprobar")
+      return
+    }
+
+    try {
+      actualizarEstadoFichada(row.fichada.id, "ok")
+      setSuccessMessage("Fichada aprobada correctamente.")
+      setTimeout(() => setSuccessMessage(""), 3000)
+    } catch (error) {
+      console.error("Error al aprobar fichada:", error)
+    }
+  }
+
   if (!isLoaded) {
     return <div className="flex items-center justify-center h-64">Cargando...</div>
   }
@@ -376,7 +396,7 @@ export function EmpleadoFichadasView() {
                   <TableHead>Método</TableHead>
                   <TableHead>Ubicación</TableHead>
                   <TableHead>Resultado</TableHead>
-                  <TableHead>Estado</TableHead>
+                  <TableHead>Estado Fichada</TableHead>
                   <TableHead>Justificante</TableHead>
                   <TableHead>Acción</TableHead>
                 </TableRow>
@@ -384,7 +404,7 @@ export function EmpleadoFichadasView() {
               <TableBody>
                 {visibleRows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">
+                    <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">
                       No hay fichadas ni ausencias registradas en los últimos 30 días.
                     </TableCell>
                   </TableRow>
@@ -415,7 +435,21 @@ export function EmpleadoFichadasView() {
                         <TableCell>{row.metodo || "-"}</TableCell>
                         <TableCell>{row.ubicacion || "-"}</TableCell>
                         <TableCell>{resultLabel}</TableCell>
-                        <TableCell>{getStatusBadge(justificativo, row)}</TableCell>
+                        <TableCell>
+                          {row.fichadaEstado === "pendiente" ? (
+                            <div className="flex items-center gap-2 text-orange-600">
+                              <Clock className="h-4 w-4" />
+                              <span className="text-sm font-medium">Pendiente</span>
+                            </div>
+                          ) : row.fichadaEstado === "ok" ? (
+                            <div className="flex items-center gap-2 text-green-600">
+                              <CheckCircle className="h-4 w-4" />
+                              <span className="text-sm font-medium">OK</span>
+                            </div>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
                         <TableCell>
                           {justificativo ? (
                             <div className="flex items-center gap-2">
@@ -438,45 +472,58 @@ export function EmpleadoFichadasView() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {canUploadJustificativo(row) ? (
-                            <>
-                              <input
-                                type="file"
-                                id={`file-${row.id}`}
-                                className="hidden"
-                                onChange={(e) => handleFileUpload(row, e.target.files?.[0] || null)}
-                                disabled={uploadingId === row.id}
-                                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                              />
-                              <label htmlFor={`file-${row.id}`}>
-                                <Button
-                                  asChild
-                                  variant="outline"
-                                  size="sm"
+                          <div className="flex gap-2">
+                            {row.fichadaEstado === "pendiente" && row.fichada ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleAprobarFichada(row)}
+                                title="Aprobar fichada"
+                              >
+                                <CheckCircle className="mr-2 h-4 w-4" />
+                                Aprobar
+                              </Button>
+                            ) : null}
+                            {canUploadJustificativo(row) ? (
+                              <>
+                                <input
+                                  type="file"
+                                  id={`file-${row.id}`}
+                                  className="hidden"
+                                  onChange={(e) => handleFileUpload(row, e.target.files?.[0] || null)}
                                   disabled={uploadingId === row.id}
-                                  className="cursor-pointer"
-                                >
-                                  <span>
-                                    <Upload className="mr-2 h-4 w-4" />
-                                    {uploadingId === row.id ? "Subiendo..." : "Subir justificante"}
-                                  </span>
-                                </Button>
-                              </label>
-                            </>
-                          ) : justificativo ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                console.log("Descargando:", justificativo.documentoAdjunto)
-                              }}
-                            >
-                              <Download className="mr-2 h-4 w-4" />
-                              Descargar
-                            </Button>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">-</span>
-                          )}
+                                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                                />
+                                <label htmlFor={`file-${row.id}`}>
+                                  <Button
+                                    asChild
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={uploadingId === row.id}
+                                    className="cursor-pointer"
+                                  >
+                                    <span>
+                                      <Upload className="mr-2 h-4 w-4" />
+                                      {uploadingId === row.id ? "Subiendo..." : "Justificante"}
+                                    </span>
+                                  </Button>
+                                </label>
+                              </>
+                            ) : justificativo ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  console.log("Descargando:", justificativo.documentoAdjunto)
+                                }}
+                              >
+                                <Download className="mr-2 h-4 w-4" />
+                                Descargar
+                              </Button>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">-</span>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     )

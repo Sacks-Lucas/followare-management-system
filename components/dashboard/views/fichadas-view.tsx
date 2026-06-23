@@ -243,16 +243,36 @@ export function FichadasView() {
     const employee = employees.find((emp) => emp.id === selectedEmployee)
     if (!employee) return
 
+    // Validar que se ingresó hora
+    if (!hora) {
+      alert("Debe ingresar la hora de la fichada")
+      return
+    }
+
+    console.log("Registrando fichada:", {
+      empleadoId: employee.id,
+      empleadoNombre: `${employee.nombre} ${employee.apellido}`,
+      tipo: tipoFichada,
+      fecha: filterDate,
+      hora: hora,
+      ubicacion: ubicacion || "Entrada Principal",
+      observaciones,
+      metodo: metodoFichada,
+      dispositivo: dispositivo || undefined,
+      estado: "ok" as const
+    })
+
     addFichada({
       empleadoId: employee.id,
       empleadoNombre: `${employee.nombre} ${employee.apellido}`,
       tipo: tipoFichada,
       fecha: filterDate,
-      hora: hora || new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }),
+      hora: hora,
       ubicacion: ubicacion || "Entrada Principal",
-      observaciones,
+      observaciones: observaciones || undefined,
       metodo: metodoFichada,
       dispositivo: dispositivo || undefined,
+      estado: "ok",
     })
 
     // Reset form
