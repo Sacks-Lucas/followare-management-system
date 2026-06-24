@@ -28,11 +28,18 @@ const getStatusBadge = (
   row: { tipo: string; status: string; esTardanza?: boolean }
 ) => {
   if (novedad) {
-    if (novedad.aprobado) {
+    if (novedad.estado === 'aprobada') {
       return (
         <div className="flex items-center gap-2 text-green-600">
           <CheckCircle className="h-4 w-4" />
           <span className="text-sm font-medium">Aprobado</span>
+        </div>
+      )
+    }
+    if (novedad.estado === 'rechazada') {
+      return (
+        <div className="flex items-center gap-2 text-red-600">
+          <span className="text-sm font-medium">Rechazado</span>
         </div>
       )
     }
@@ -172,10 +179,16 @@ export function EmpleadoFichadasView() {
   const actualRows = useMemo<EmpleadoRow[]>(
     () =>
       employeeFichadasSorted.map((f) => ({
-        ...f,
-        ubicacion: f.ubicacion ?? "",
+        id: f.id,
+        fecha: f.fecha,
+        hora: f.hora,
+        tipo: f.tipo,
+        metodo: f.metodo,
+        ubicacion: f.ubicacion || "",
         resultado: "",
-        status: "normal",
+        status: "normal" as const,
+        esTardanza: f.esTardanza,
+        minutosExtra: f.minutosExtra,
       })),
     [employeeFichadasSorted]
   )
@@ -237,7 +250,7 @@ export function EmpleadoFichadasView() {
           metodo: "-",
           ubicacion: "-",
           resultado: absenceNovedad ? "Ausencia registrada" : "Ausencia sin fichar",
-          status: absenceNovedad?.aprobado ? "approved" : isJustified ? "pending" : "pending",
+          status: absenceNovedad?.estado === "aprobada" ? "approved" : isJustified ? "pending" : "pending",
           justificativo: justificativosByDate.get(dateStr),
           ausenciaNovedad: absenceNovedad,
         })
@@ -296,7 +309,7 @@ export function EmpleadoFichadasView() {
             : row.tipo === "salida"
               ? "Justificativo por salida anticipada"
               : "Justificativo por ausencia",
-        aprobado: false,
+        estado: "pendiente",
         documentoAdjunto: file.name,
       })
       setUploadingId(null)
@@ -377,6 +390,7 @@ export function EmpleadoFichadasView() {
                   <TableHead>Ubicación</TableHead>
                   <TableHead>Resultado</TableHead>
                   <TableHead>Estado</TableHead>
+                  <TableHead>Auditoría</TableHead>
                   <TableHead>Justificante</TableHead>
                   <TableHead>Acción</TableHead>
                 </TableRow>
@@ -384,7 +398,7 @@ export function EmpleadoFichadasView() {
               <TableBody>
                 {visibleRows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">
+                    <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">
                       No hay fichadas ni ausencias registradas en los últimos 30 días.
                     </TableCell>
                   </TableRow>
@@ -416,6 +430,18 @@ export function EmpleadoFichadasView() {
                         <TableCell>{row.ubicacion || "-"}</TableCell>
                         <TableCell>{resultLabel}</TableCell>
                         <TableCell>{getStatusBadge(justificativo, row)}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {(justificativo?.estado !== 'pendiente' && justificativo?.modificadoPor && justificativo?.fechaModificacion) ||
+                          (absenceNovedad?.estado !== 'pendiente' && absenceNovedad?.modificadoPor && absenceNovedad?.fechaModificacion) ? (
+                            <div>
+                              <div className="font-medium">{justificativo?.modificadoPor || absenceNovedad?.modificadoPor}</div>
+                              <div>{new Date(justificativo?.fechaModificacion || absenceNovedad?.fechaModificacion || '').toLocaleDateString("es-AR")}</div>
+                              <div>{new Date(justificativo?.fechaModificacion || absenceNovedad?.fechaModificacion || '').toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</div>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground/50">-</span>
+                          )}
+                        </TableCell>
                         <TableCell>
                           {justificativo ? (
                             <div className="flex items-center gap-2">

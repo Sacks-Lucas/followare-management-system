@@ -124,8 +124,8 @@ const novedadColors: Record<TipoNovedad, string> = {
   cambioTurno: "bg-indigo-100 text-indigo-800",
   vacaciones: "bg-teal-100 text-teal-800",
   enfermedad: "bg-orange-100 text-orange-800",
-  mediaAusencia: "",
-  fichaIncompleta: ""
+  mediaAusencia: "bg-amber-100 text-amber-800",
+  fichaIncompleta: "bg-gray-100 text-gray-800"
 }
 
 const novedadLabels: Record<TipoNovedad, string> = {
@@ -139,8 +139,8 @@ const novedadLabels: Record<TipoNovedad, string> = {
   cambioTurno: "Cambio de Turno",
   vacaciones: "Vacaciones",
   enfermedad: "Enfermedad",
-  mediaAusencia: "",
-  fichaIncompleta: ""
+  mediaAusencia: "Media Ausencia",
+  fichaIncompleta: "Ficha Incompleta"
 }
 
 const modalidadFichadaLabels: Record<ModalidadFichada, string> = {
