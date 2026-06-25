@@ -234,4 +234,26 @@ test.describe("Admin - Fichadas", () => {
       await expect(fila).toContainText("Pendiente")
     })
   })
+
+  test("detecta una doble fichada (entrada repetida) en Gestión de Novedades", async ({ page }) => {
+    // Registramos dos veces la MISMA entrada (mismo empleado, fecha y hora).
+    // La segunda, al caer dentro de los 2 minutos de tolerancia, el sistema la
+    // marca como posible duplicado (estado "pendiente").
+    const fecha = "2035-06-10"
+    const sufijo = Date.now()
+    await crearFichadaManual(page, { tipo: "Entrada", fecha, hora: "08:00", ubicacion: `Doble-A-${sufijo}` })
+    await crearFichadaManual(page, { tipo: "Entrada", fecha, hora: "08:00", ubicacion: `Doble-B-${sufijo}` })
+
+    // En "Fichadas del Día" -> "Gestión de Novedades" aparece la doble fichada.
+    await page.getByRole("tab", { name: /Gestión de Novedades/ }).click()
+
+    const fila = page
+      .getByRole("row")
+      .filter({ hasText: EMPLEADO_NOMBRE })
+      .filter({ hasText: "Doble Fichada" })
+    await expect(fila).toBeVisible()
+    await expect(fila).toContainText("Entrada")
+    await expect(fila).toContainText("posible duplicado")
+    await expect(fila).toContainText("Pendiente")
+  })
 })
