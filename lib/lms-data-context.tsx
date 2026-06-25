@@ -132,6 +132,7 @@ export const ensureEmployeeCredentials = (employee: Employee, existingUsernames:
 
 export type TipoFichada = "entrada" | "salida" | "inicioBreak" | "finBreak"
 export type MetodoFichada = "biometrico" | "manual" | "api" | "tarjeta"
+export type EstadoFichada = "ok" | "pendiente"
 
 export interface Fichada {
   id: string
@@ -144,6 +145,7 @@ export interface Fichada {
   observaciones?: string
   metodo: MetodoFichada
   dispositivo?: string
+  estado: EstadoFichada
   // Interpretación automática
   esTardanza?: boolean
   minutosExtra?: number
@@ -217,7 +219,7 @@ interface LMSDataContextType {
 
   // Fichadas
   fichadas: Fichada[]
-  addFichada: (fichada: Omit<Fichada, "id">) => void
+  addFichada: (fichada: Omit<Fichada, "id">) => { success: boolean; error?: string }
   addFichadasMasivas: (fichadas: Omit<Fichada, "id">[]) => void
   deleteFichada: (id: string) => void
   getFichadasHoy: () => Fichada[]
@@ -226,6 +228,9 @@ interface LMSDataContextType {
   getFichadasByMonth: (year: number, month: number) => Fichada[]
   getFichadasByPeriod: (fechaInicio: string, fechaFin: string) => Fichada[]
   interpretarFichada: (fichada: Omit<Fichada, "id" | "esTardanza" | "minutosExtra">) => Omit<Fichada, "id">
+  actualizarEstadoFichada: (id: string, estado: EstadoFichada) => { success: boolean; error?: string }
+  validarAlternancia: (empleadoId: string, fecha: string, tipo: TipoFichada, hora: string) => { valido: boolean; error?: string }
+  detectarDuplicados: (empleadoId: string, fecha: string, tipo: TipoFichada, hora: string) => boolean
 
   // Novedades
   novedades: Novedad[]
@@ -1133,6 +1138,143 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
     return null
   }
 
+  // Funciones de validación de fichadas
+  const detectarDuplicados = useCallback(
+    (empleadoId: string, fecha: string, tipo: TipoFichada, hora: string): boolean => {
+      const fichadasDelDia = fichadas.filter(
+        (f) => f.empleadoId === empleadoId && f.fecha === fecha && f.tipo === tipo
+      )
+
+      if (fichadasDelDia.length === 0) return false
+
+      // Convertir hora a minutos para comparación
+      const horaMinutos = parseTimeToMinutes(hora)
+
+      // Si hay fichadas del mismo tipo, verificar tolerancia de 2 minutos
+      const esDuplicado = fichadasDelDia.some((f) => {
+        const fichadaMinutos = parseTimeToMinutes(f.hora)
+        const diferencia = Math.abs(horaMinutos - fichadaMinutos)
+        return diferencia < 2
+      })
+
+      return esDuplicado
+    },
+    [fichadas]
+  )
+
+  const validarAlternancia = useCallback(
+    (empleadoId: string, fecha: string, tipo: TipoFichada, hora: string): { valido: boolean; error?: string } => {
+      const fichadasDelDia = fichadas.filter(
+        (f) => f.empleadoId === empleadoId && f.fecha === fecha && (f.tipo === "entrada" || f.tipo === "salida")
+      )
+
+      if (fichadasDelDia.length === 0) {
+        // Primera fichada del día
+        if (tipo === "salida") {
+          // Para salida como primera fichada, permitir si hay entrada del día anterior
+          const diaAnterior = new Date(fecha)
+          diaAnterior.setDate(diaAnterior.getDate() - 1)
+          const fechaAnterior = diaAnterior.toISOString().split('T')[0]
+          
+          const fichadasDiaAnterior = fichadas.filter(
+            (f) => f.empleadoId === empleadoId && f.fecha === fechaAnterior && (f.tipo === "entrada" || f.tipo === "salida")
+          )
+          
+          const entradas = fichadasDiaAnterior.filter((f) => f.tipo === "entrada")
+          const salidas = fichadasDiaAnterior.filter((f) => f.tipo === "salida")
+          
+          // Válido si hay entrada(s) en día anterior y más entradas que salidas (entrada sin salida)
+          if (entradas.length > 0 && entradas.length > salidas.length) {
+            return { valido: true }
+          }
+          
+          return { valido: false, error: "La primera fichada del día debe ser de tipo Entrada (no hay entrada del día anterior)" }
+        }
+        return { valido: true }
+      }
+
+      const horaMinutos = parseTimeToMinutes(hora)
+
+      if (tipo === "entrada") {
+        // Nueva Entrada: Si es la primera del día, siempre es válida
+        // Si es segunda o más, requiere Salida intermedia (la nueva entrada debe ser posterior a la última salida)
+        const entradas = fichadasDelDia
+          .filter((f) => f.tipo === "entrada")
+          .map((f) => parseTimeToMinutes(f.hora))
+          .sort((a, b) => a - b)
+        const salidas = fichadasDelDia
+          .filter((f) => f.tipo === "salida")
+          .map((f) => parseTimeToMinutes(f.hora))
+          .sort((a, b) => a - b)
+
+        // Primera Entrada del día: siempre válida (la anterior podría estar en día anterior para turnos nocturnos)
+        if (entradas.length === 0) {
+          return { valido: true }
+        }
+
+        // Segunda Entrada o más: requiere Salida intermedia (debe ser posterior a la última salida)
+        if (salidas.length === 0) {
+          return { valido: false, error: "No se puede registrar una segunda Entrada sin una Salida previa" }
+        }
+
+        const ultimaSalida = salidas[salidas.length - 1]
+
+        // La nueva entrada debe ser posterior a la última salida
+        if (!(ultimaSalida < horaMinutos)) {
+          return {
+            valido: false,
+            error: `Cronología inválida. La nueva Entrada debe ser posterior a la última Salida (${Math.floor(ultimaSalida / 60).toString().padStart(2, '0')}:${(ultimaSalida % 60).toString().padStart(2, '0')})`
+          }
+        }
+      } else if (tipo === "salida") {
+        // Nueva Salida: debe ser posterior a la última Entrada del día
+        // Si no hay entrada en el día actual, puede ser salida de turno nocturno (entrada del día anterior)
+        const entradas = fichadasDelDia
+          .filter((f) => f.tipo === "entrada")
+          .map((f) => parseTimeToMinutes(f.hora))
+          .sort((a, b) => a - b)
+        const salidas = fichadasDelDia
+          .filter((f) => f.tipo === "salida")
+          .map((f) => parseTimeToMinutes(f.hora))
+          .sort((a, b) => a - b)
+
+        // Si no hay entrada en el día actual, buscar si hay entrada sin cerrar del día anterior (turnos nocturnos)
+        if (entradas.length === 0) {
+          const diaAnterior = new Date(fecha)
+          diaAnterior.setDate(diaAnterior.getDate() - 1)
+          const fechaAnterior = diaAnterior.toISOString().split('T')[0]
+          
+          const fichadasDiaAnterior = fichadas.filter(
+            (f) => f.empleadoId === empleadoId && f.fecha === fechaAnterior && (f.tipo === "entrada" || f.tipo === "salida")
+          )
+          
+          const entradasDiaAnterior = fichadasDiaAnterior.filter((f) => f.tipo === "entrada")
+          const salidasDiaAnterior = fichadasDiaAnterior.filter((f) => f.tipo === "salida")
+          
+          // Válido si hay entrada(s) en día anterior y más entradas que salidas (entrada sin salida)
+          if (entradasDiaAnterior.length > 0 && entradasDiaAnterior.length > salidasDiaAnterior.length) {
+            return { valido: true }
+          }
+          
+          return { valido: false, error: "No se puede registrar una Salida sin una Entrada previa" }
+        }
+
+        const ultimaEntrada = entradas[entradas.length - 1]
+
+        // La nueva salida debe ser posterior a la última entrada
+        if (!(ultimaEntrada < horaMinutos)) {
+          return {
+            valido: false,
+            error: `Cronología inválida. La Salida debe ser posterior a la última Entrada (${Math.floor(ultimaEntrada / 60).toString().padStart(2, '0')}:${(ultimaEntrada % 60).toString().padStart(2, '0')})`
+          }
+        }
+      }
+
+      return { valido: true }
+    },
+    [fichadas]
+  )
+
   // Fichada functions
   const interpretarFichada = useCallback(
     (fichada: Omit<Fichada, "id" | "esTardanza" | "minutosExtra">): Omit<Fichada, "id"> => {
@@ -1253,9 +1395,25 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
   )
 
   const addFichada = useCallback(
-    (fichada: Omit<Fichada, "id">) => {
+    (fichada: Omit<Fichada, "id">): { success: boolean; error?: string } => {
+      // Detectar duplicados PRIMERO
+      const esDuplicado = detectarDuplicados(fichada.empleadoId, fichada.fecha, fichada.tipo, fichada.hora)
+
+      // Si NO es duplicado, validar alternancia; si falla, devolver error atrapable por la UI
+      if (!esDuplicado && (fichada.tipo === "entrada" || fichada.tipo === "salida")) {
+        const validacion = validarAlternancia(fichada.empleadoId, fichada.fecha, fichada.tipo, fichada.hora)
+        if (!validacion.valido) {
+          return { success: false, error: validacion.error ?? "Fichada rechazada por regla de alternancia" }
+        }
+      }
+
+      // Interpretar fichada
       const interpretada = interpretarFichada(fichada)
-      const newFichada: Fichada = { ...interpretada, id: crypto.randomUUID() }
+
+      // Si hay duplicado, marcar como pendiente; si no, respetar el estado original o usar "ok"
+      const estadoFinal: EstadoFichada = esDuplicado ? "pendiente" : (fichada.estado || "ok")
+
+      const newFichada: Fichada = { ...interpretada, id: crypto.randomUUID(), estado: estadoFinal }
       setFichadas((prev) => [newFichada, ...prev])
 
       // Auto-generate novedad for tardanza
@@ -1301,26 +1459,49 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
         if (novedadAusencia) {
           // Verificar si ya existe una novedad de ausencia para este empleado en esta fecha
           const novedadExistente = novedades.find(
-            n => n.empleadoId === newFichada.empleadoId && 
-                 n.fecha === newFichada.fecha && 
+            n => n.empleadoId === newFichada.empleadoId &&
+                 n.fecha === newFichada.fecha &&
                  (n.tipo === "ausencia" || n.tipo === "mediaAusencia")
           )
-          
+
           if (!novedadExistente) {
             setNovedades((prev) => [novedadAusencia, ...prev])
           }
         }
       }
+
+      return { success: true }
     },
-    [interpretarFichada, employees, turnos, checkUnderHoursWorked, fichadas, novedades]
+    [interpretarFichada, employees, turnos, checkUnderHoursWorked, fichadas, novedades, validarAlternancia, detectarDuplicados]
   )
 
   const addFichadasMasivas = useCallback(
     (fichadasNuevas: Omit<Fichada, "id">[]) => {
-      const nuevasFichadas: Fichada[] = fichadasNuevas.map((f) => ({
-        ...interpretarFichada(f),
-        id: crypto.randomUUID(),
-      }))
+      // Validar cada fichada: detectar duplicados PRIMERO, luego validar alternancia si no es duplicado
+      const fichadasValidadas = fichadasNuevas.filter((f) => {
+        const esDuplicado = detectarDuplicados(f.empleadoId, f.fecha, f.tipo, f.hora)
+        
+        // Si NO es duplicado, validar alternancia
+        if (!esDuplicado && (f.tipo === "entrada" || f.tipo === "salida")) {
+          const validacion = validarAlternancia(f.empleadoId, f.fecha, f.tipo, f.hora)
+          if (!validacion.valido) {
+            console.warn(`Fichada rechazada - ${validacion.error}`)
+            return false
+          }
+        }
+        return true
+      })
+
+      const nuevasFichadas: Fichada[] = fichadasValidadas.map((f) => {
+        const interpretada = interpretarFichada(f)
+        const esDuplicado = detectarDuplicados(f.empleadoId, f.fecha, f.tipo, f.hora)
+        const estado: EstadoFichada = esDuplicado ? "pendiente" : "ok"
+        return {
+          ...interpretada,
+          id: crypto.randomUUID(),
+          estado,
+        }
+      })
 
       const nuevasNovedades: Novedad[] = []
 
@@ -1388,7 +1569,7 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
         setNovedades((prev) => [...nuevasNovedades, ...prev])
       }
     },
-    [interpretarFichada, employees, turnos, checkUnderHoursWorked, fichadas, novedades]
+    [interpretarFichada, employees, turnos, checkUnderHoursWorked, fichadas, novedades, validarAlternancia, detectarDuplicados]
   )
 
   const deleteFichada = useCallback((id: string) => {
@@ -1429,6 +1610,59 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
   const getFichadasByPeriod = useCallback(
     (fechaInicio: string, fechaFin: string) => {
       return fichadas.filter((f) => f.fecha >= fechaInicio && f.fecha <= fechaFin)
+    },
+    [fichadas]
+  )
+
+  const actualizarEstadoFichada = useCallback(
+    (id: string, estado: EstadoFichada): { success: boolean; error?: string } => {
+      const fichada = fichadas.find((f) => f.id === id)
+      if (!fichada) return { success: false, error: "Fichada no encontrada" }
+
+      // Validar alternancia cronológica estricta al aprobar (no limitada a un día)
+      if (estado === "ok" && (fichada.tipo === "entrada" || fichada.tipo === "salida")) {
+        const fichadaDt = fichada.fecha + " " + fichada.hora
+
+        // Todas las fichadas ok del empleado (entrada/salida), ordenadas cronológicamente
+        const fichadasOkOrdenadas = fichadas
+          .filter((f) =>
+            f.id !== id &&
+            f.empleadoId === fichada.empleadoId &&
+            (f.tipo === "entrada" || f.tipo === "salida") &&
+            f.estado === "ok"
+          )
+          .sort((a, b) => (a.fecha + " " + a.hora).localeCompare(b.fecha + " " + b.hora))
+
+        // Última fichada válida ANTERIOR al horario de la que se quiere aprobar
+        const fichadasAnteriores = fichadasOkOrdenadas.filter(
+          (f) => (f.fecha + " " + f.hora) < fichadaDt
+        )
+        const ultimaAnterior = fichadasAnteriores.length > 0
+          ? fichadasAnteriores[fichadasAnteriores.length - 1]
+          : null
+
+        if (fichada.tipo === "entrada") {
+          // No se puede aprobar Entrada si la última fichada ok anterior fue también Entrada
+          if (ultimaAnterior && ultimaAnterior.tipo === "entrada") {
+            return {
+              success: false,
+              error: "Inconsistencia cronológica: falta fichada intermedia para mantener la alternancia Entrada/Salida",
+            }
+          }
+        } else if (fichada.tipo === "salida") {
+          // No se puede aprobar Salida si no hay Entrada ok previa, o si la última ok anterior fue también Salida
+          if (!ultimaAnterior || ultimaAnterior.tipo === "salida") {
+            return {
+              success: false,
+              error: "Inconsistencia cronológica: falta fichada intermedia para mantener la alternancia Entrada/Salida",
+            }
+          }
+        }
+      }
+
+      // Preservar trazabilidad: solo se actualiza el estado; los datos crudos originales no se mutan
+      setFichadas((prev) => prev.map((f) => (f.id === id ? { ...f, estado } : f)))
+      return { success: true }
     },
     [fichadas]
   )
@@ -1638,6 +1872,9 @@ export function LMSDataProvider({ children }: { children: ReactNode }) {
         getFichadasByMonth,
         getFichadasByPeriod,
         interpretarFichada,
+        actualizarEstadoFichada,
+        validarAlternancia,
+        detectarDuplicados,
         novedades,
         addNovedad,
         updateNovedad,

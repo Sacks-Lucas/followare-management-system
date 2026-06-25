@@ -22,6 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   useLMSData,
@@ -190,6 +191,7 @@ export function FichadasView() {
     gestionarEstadoNovedad,
     deleteNovedad,
     getNovedadesPendientes,
+    actualizarEstadoFichada,
     turnos,
     getTurnoById,
     isLoaded,
@@ -200,6 +202,19 @@ export function FichadasView() {
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
   const [filterDate, setFilterDate] = useState(todayLocalISODate())
   const [activeTab, setActiveTab] = useState("fichadas")
+
+  // Feedback messages
+  const [errorMessage, setErrorMessage] = useState("")
+  const [successMessage, setSuccessMessage] = useState("")
+
+  const showError = (msg: string) => {
+    setErrorMessage(msg)
+    setTimeout(() => setErrorMessage(""), 6000)
+  }
+  const showSuccess = (msg: string) => {
+    setSuccessMessage(msg)
+    setTimeout(() => setSuccessMessage(""), 3000)
+  }
 
   // Form state for fichada
   const [selectedEmployee, setSelectedEmployee] = useState("")
@@ -232,6 +247,11 @@ export function FichadasView() {
     .filter((f) => f.fecha === filterDate)
     .sort((a, b) => b.hora.localeCompare(a.hora))
 
+  // Fichadas marcadas como posibles duplicados, pendientes de resolución por el admin
+  const fichadasPendientes = fichadas
+    .filter((f) => f.estado === "pendiente")
+    .sort((a, b) => b.fecha.localeCompare(a.fecha) || b.hora.localeCompare(a.hora))
+
   // Calcular estadísticas de interpretación
   const tardanzasHoy = fichadasHoy.filter((f) => f.esTardanza).length
   const horasExtraHoy = fichadasHoy
@@ -243,17 +263,42 @@ export function FichadasView() {
     const employee = employees.find((emp) => emp.id === selectedEmployee)
     if (!employee) return
 
-    addFichada({
+    // Validar que se ingresó hora
+    if (!hora) {
+      alert("Debe ingresar la hora de la fichada")
+      return
+    }
+
+    console.log("Registrando fichada:", {
       empleadoId: employee.id,
       empleadoNombre: `${employee.nombre} ${employee.apellido}`,
       tipo: tipoFichada,
       fecha: filterDate,
-      hora: hora || new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }),
+      hora: hora,
       ubicacion: ubicacion || "Entrada Principal",
       observaciones,
       metodo: metodoFichada,
       dispositivo: dispositivo || undefined,
+      estado: "ok" as const
     })
+
+    const result = addFichada({
+      empleadoId: employee.id,
+      empleadoNombre: `${employee.nombre} ${employee.apellido}`,
+      tipo: tipoFichada,
+      fecha: filterDate,
+      hora: hora,
+      ubicacion: ubicacion || "Entrada Principal",
+      observaciones: observaciones || undefined,
+      metodo: metodoFichada,
+      dispositivo: dispositivo || undefined,
+      estado: "ok",
+    })
+
+    if (!result.success) {
+      showError(result.error ?? "No se pudo registrar la fichada")
+      return
+    }
 
     // Reset form
     setSelectedEmployee("")
@@ -369,7 +414,7 @@ export function FichadasView() {
     const employee = employees.find((emp) => emp.id === selectedEmployee)
     if (!employee) return
 
-    addFichada({
+    const result = addFichada({
       empleadoId: employee.id,
       empleadoNombre: `${employee.nombre} ${employee.apellido}`,
       tipo,
@@ -378,7 +423,20 @@ export function FichadasView() {
       ubicacion: "Entrada Principal",
       metodo,
     })
+    if (!result.success) {
+      showError(result.error ?? "No se pudo registrar la fichada")
+    }
     setSelectedEmployee("")
+  }
+
+  // Aprobar una fichada pendiente (doble fichada): valida alternancia cronológica antes de cambiar a "ok"
+  const handleAprobarFichadaPendiente = (id: string) => {
+    const result = actualizarEstadoFichada(id, "ok")
+    if (!result.success) {
+      showError(result.error ?? "No se pudo aprobar la fichada")
+    } else {
+      showSuccess("Fichada aprobada correctamente.")
+    }
   }
 
   return (
@@ -626,6 +684,20 @@ export function FichadasView() {
         </div>
       </div>
 
+      {/* Mensajes de feedback para el admin */}
+      {errorMessage && (
+        <Alert className="border-red-200 bg-red-50">
+          <AlertTriangle className="h-4 w-4 text-red-600" />
+          <AlertDescription className="text-red-800 font-medium">{errorMessage}</AlertDescription>
+        </Alert>
+      )}
+      {successMessage && (
+        <Alert className="border-green-200 bg-green-50">
+          <Check className="h-4 w-4 text-green-600" />
+          <AlertDescription className="text-green-800 font-medium">{successMessage}</AlertDescription>
+        </Alert>
+      )}
+
       {/* Quick Actions */}
       <Card>
         <CardHeader>
@@ -775,9 +847,9 @@ export function FichadasView() {
           <TabsTrigger value="fichadas">Registro de Fichadas</TabsTrigger>
           <TabsTrigger value="novedades">
             Gestión de Novedades
-            {novedadesPendientes.length > 0 && (
+            {(novedadesPendientes.length + fichadasPendientes.length) > 0 && (
               <Badge variant="secondary" className="ml-2 bg-amber-100 text-amber-800">
-                {novedadesPendientes.length}
+                {novedadesPendientes.length + fichadasPendientes.length}
               </Badge>
             )}
           </TabsTrigger>
@@ -1048,7 +1120,7 @@ export function FichadasView() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {novedades.length === 0 ? (
+                    {novedades.length === 0 && fichadasPendientes.length === 0 ? (
                       <TableRow>
                         <TableCell
                           colSpan={7}
@@ -1058,7 +1130,64 @@ export function FichadasView() {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      novedades.slice(0, 20).map((novedad) => (
+                      <>
+                        {/* Dobles fichadas pendientes de resolución */}
+                        {fichadasPendientes.map((fichada) => (
+                          <TableRow
+                            key={fichada.id}
+                            className="bg-amber-50/60 dark:bg-amber-950/20 border-l-4 border-l-amber-400"
+                          >
+                            <TableCell className="font-mono">
+                              {parseLocalDate(fichada.fecha).toLocaleDateString("es-AR")}
+                            </TableCell>
+                            <TableCell className="font-medium">{fichada.empleadoNombre}</TableCell>
+                            <TableCell>
+                              <Badge
+                                variant="secondary"
+                                className="bg-orange-100 text-orange-800"
+                              >
+                                <AlertTriangle className="mr-1 h-3 w-3" />
+                                Doble Fichada &middot; {tipoFichadaLabels[fichada.tipo]}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="max-w-[300px] truncate text-muted-foreground text-sm">
+                              {tipoFichadaLabels[fichada.tipo]} a las {fichada.hora} &mdash; marcada como posible duplicado
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant="outline"
+                                className="border-amber-300 text-amber-700"
+                              >
+                                Pendiente
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                  onClick={() => handleAprobarFichadaPendiente(fichada.id)}
+                                  title="Aprobar fichada"
+                                >
+                                  <Check className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                  onClick={() => deleteFichada(fichada.id)}
+                                  title="Rechazar y eliminar fichada duplicada"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+
+                        {/* Novedades regulares */}
+                        {novedades.slice(0, 20).map((novedad) => (
                         <TableRow key={novedad.id}>
                           <TableCell className="font-mono">
                             {parseLocalDate(novedad.fecha).toLocaleDateString("es-AR")}
@@ -1153,7 +1282,8 @@ export function FichadasView() {
                             </div>
                           </TableCell>
                         </TableRow>
-                      ))
+                      ))}
+                      </>
                     )}
                   </TableBody>
                 </Table>
