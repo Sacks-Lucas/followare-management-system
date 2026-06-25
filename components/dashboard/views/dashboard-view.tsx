@@ -47,6 +47,17 @@ export function DashboardView() {
 
   const stats = getStats()
 
+  const formatAuditTrail = (novedad: any) => {
+    if (novedad.estado === 'pendiente') return null
+    if (!novedad.modificadoPor || !novedad.fechaModificacion) return null
+    
+    const fecha = new Date(novedad.fechaModificacion)
+    const fecha_str = fecha.toLocaleDateString("es-AR")
+    const hora_str = fecha.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })
+    
+    return `${novedad.modificadoPor} - ${fecha_str} ${hora_str}`
+  }
+
   const isJustifiedNonAttendance = (tipo: string) =>
     ["ausencia", "licencia", "vacaciones", "enfermedad", "suspension", "feriado", "justificativo"].includes(
       tipo
@@ -253,11 +264,18 @@ export function DashboardView() {
                         </Badge>
                       </div>
                       <p className="text-sm text-muted-foreground">{novedad.descripcion}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {parseLocalDate(novedad.fecha).toLocaleDateString("es-AR")}
-                      </p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-muted-foreground">
+                          {parseLocalDate(novedad.fecha).toLocaleDateString("es-AR")}
+                        </p>
+                        {formatAuditTrail(novedad) && (
+                          <p className="text-xs text-muted-foreground italic">
+                            {formatAuditTrail(novedad)}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    {!novedad.aprobado && (
+                    {novedad.estado === 'pendiente' && (
                       <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
                         Pendiente
                       </Badge>

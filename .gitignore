@@ -15,3 +15,12 @@ node_modules
 .next/
 out
 .DS_Store
+
+# Carpetas compiladas
+out/
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

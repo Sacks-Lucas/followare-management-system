@@ -25,14 +25,39 @@ const tipoFichadaLabels: Record<Fichada["tipo"], string> = {
 
 const getStatusBadge = (
   novedad: Novedad | undefined,
-  row: { tipo: string; status: string; esTardanza?: boolean }
+  row: { tipo: string; status: string; esTardanza?: boolean; fichadaEstado?: "ok" | "pendiente" }
 ) => {
+  
+  if (row.fichadaEstado === "pendiente") {
+    return (
+      <div className="flex items-center gap-2 text-orange-600">
+        <Clock className="h-4 w-4" />
+        <span className="text-sm font-medium">Pendiente</span>
+      </div>
+    );
+  }
+  if (row.fichadaEstado === "ok") {
+    return (
+      <div className="flex items-center gap-2 text-green-600">
+        <CheckCircle className="h-4 w-4" />
+        <span className="text-sm font-medium">OK</span>
+      </div>
+    );
+  }
+  
   if (novedad) {
-    if (novedad.aprobado) {
+    if (novedad.estado === 'aprobada') {
       return (
         <div className="flex items-center gap-2 text-green-600">
           <CheckCircle className="h-4 w-4" />
           <span className="text-sm font-medium">Aprobado</span>
+        </div>
+      )
+    }
+    if (novedad.estado === 'rechazada') {
+      return (
+        <div className="flex items-center gap-2 text-red-600">
+          <span className="text-sm font-medium">Rechazado</span>
         </div>
       )
     }
@@ -174,11 +199,17 @@ export function EmpleadoFichadasView() {
   const actualRows = useMemo<EmpleadoRow[]>(
     () =>
       employeeFichadasSorted.map((f) => ({
-        ...f,
-        fichada: f,
-        ubicacion: f.ubicacion ?? "",
+        id: f.id,
+        fecha: f.fecha,
+        hora: f.hora,
+        tipo: f.tipo,
+        metodo: f.metodo,
+        ubicacion: f.ubicacion || "",
         resultado: "",
-        status: "normal",
+        status: "normal" as const,
+        esTardanza: f.esTardanza,
+        minutosExtra: f.minutosExtra,
+        // Agregamos esto de tu rama para mantener la lógica de estado
         fichadaEstado: f.estado,
       })),
     [employeeFichadasSorted]
@@ -241,7 +272,7 @@ export function EmpleadoFichadasView() {
           metodo: "-",
           ubicacion: "-",
           resultado: absenceNovedad ? "Ausencia registrada" : "Ausencia sin fichar",
-          status: absenceNovedad?.aprobado ? "approved" : isJustified ? "pending" : "pending",
+          status: absenceNovedad?.estado === "aprobada" ? "approved" : isJustified ? "pending" : "pending",
           justificativo: justificativosByDate.get(dateStr),
           ausenciaNovedad: absenceNovedad,
         })
@@ -300,7 +331,7 @@ export function EmpleadoFichadasView() {
             : row.tipo === "salida"
               ? "Justificativo por salida anticipada"
               : "Justificativo por ausencia",
-        aprobado: false,
+        estado: "pendiente",
         documentoAdjunto: file.name,
       })
       setUploadingId(null)
@@ -381,7 +412,8 @@ export function EmpleadoFichadasView() {
                   <TableHead>Método</TableHead>
                   <TableHead>Ubicación</TableHead>
                   <TableHead>Resultado</TableHead>
-                  <TableHead>Estado Fichada</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead>Auditoría</TableHead>
                   <TableHead>Justificante</TableHead>
                   <TableHead>Acción</TableHead>
                 </TableRow>
@@ -420,19 +452,19 @@ export function EmpleadoFichadasView() {
                         <TableCell>{row.metodo || "-"}</TableCell>
                         <TableCell>{row.ubicacion || "-"}</TableCell>
                         <TableCell>{resultLabel}</TableCell>
-                        <TableCell>
-                          {row.fichadaEstado === "pendiente" ? (
-                            <div className="flex items-center gap-2 text-orange-600">
-                              <Clock className="h-4 w-4" />
-                              <span className="text-sm font-medium">Pendiente</span>
-                            </div>
-                          ) : row.fichadaEstado === "ok" ? (
-                            <div className="flex items-center gap-2 text-green-600">
-                              <CheckCircle className="h-4 w-4" />
-                              <span className="text-sm font-medium">OK</span>
+                        <TableCell>{getStatusBadge(justificativo, row)}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {(justificativo?.estado !== 'pendiente' && justificativo?.modificadoPor && justificativo?.fechaModificacion) ||
+                          (absenceNovedad?.estado !== 'pendiente' && absenceNovedad?.modificadoPor && absenceNovedad?.fechaModificacion) ? (
+                            <div>
+                              <div className="font-medium">{justificativo?.modificadoPor || absenceNovedad?.modificadoPor}</div>
+                              <div>{new Date(justificativo?.fechaModificacion || absenceNovedad?.fechaModificacion || '').toLocaleDateString("es-AR")}</div>
+                              <div>{new Date(justificativo?.fechaModificacion || absenceNovedad?.fechaModificacion || '').toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</div>
                             </div>
                           ) : (
-                            <span className="text-sm text-muted-foreground">-</span>
+                            <span className="text-muted-foreground/50">-</span>
+                          )}
+                        </TableCell>
                           )}
                         </TableCell>
                         <TableCell>

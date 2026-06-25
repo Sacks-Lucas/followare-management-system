@@ -108,8 +108,8 @@ const tipoNovedadLabels: Record<TipoNovedad, string> = {
   cambioTurno: "Cambio de Turno",
   vacaciones: "Vacaciones",
   enfermedad: "Enfermedad",
-  mediaAusencia: "",
-  fichaIncompleta: ""
+  mediaAusencia: "Media Ausencia",
+  fichaIncompleta: "Ficha Incompleta"
 }
 
 const tipoNovedadColors: Record<TipoNovedad, string> = {
@@ -123,8 +123,8 @@ const tipoNovedadColors: Record<TipoNovedad, string> = {
   cambioTurno: "bg-indigo-100 text-indigo-800",
   vacaciones: "bg-teal-100 text-teal-800",
   enfermedad: "bg-orange-100 text-orange-800",
-  mediaAusencia: "",
-  fichaIncompleta: ""
+  mediaAusencia: "bg-red-50 text-red-700",
+  fichaIncompleta: "bg-yellow-100 text-yellow-800"
 }
 
 const normalizeDateString = (value: string): string | undefined => {
@@ -188,7 +188,7 @@ export function FichadasView() {
     getFichadasHoy,
     novedades,
     addNovedad,
-    aprobarNovedad,
+    gestionarEstadoNovedad,
     deleteNovedad,
     getNovedadesPendientes,
     actualizarEstadoFichada,
@@ -323,7 +323,7 @@ export function FichadasView() {
       fecha: novedadFecha,
       fechaFin: novedadFechaFin || undefined,
       descripcion: novedadDescripcion,
-      aprobado: false,
+      estado: "pendiente",
     })
 
     // Reset form
@@ -1115,6 +1115,7 @@ export function FichadasView() {
                       <TableHead>Tipo</TableHead>
                       <TableHead>Descripción</TableHead>
                       <TableHead>Estado</TableHead>
+                      <TableHead>Auditoría</TableHead>
                       <TableHead className="w-[100px]">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1122,7 +1123,7 @@ export function FichadasView() {
                     {novedades.length === 0 && fichadasPendientes.length === 0 ? (
                       <TableRow>
                         <TableCell
-                          colSpan={6}
+                          colSpan={7}
                           className="text-center py-8 text-muted-foreground"
                         >
                           No hay novedades registradas
@@ -1212,13 +1213,20 @@ export function FichadasView() {
                             {novedad.descripcion}
                           </TableCell>
                           <TableCell>
-                            {novedad.aprobado ? (
+                            {novedad.estado === 'aprobada' ? (
                               <Badge
                                 variant="outline"
                                 className="border-green-300 text-green-700"
                               >
                                 <Check className="mr-1 h-3 w-3" />
                                 Aprobado
+                              </Badge>
+                            ) : novedad.estado === 'rechazada' ? (
+                              <Badge
+                                variant="outline"
+                                className="border-red-300 text-red-700"
+                              >
+                                Rechazado
                               </Badge>
                             ) : (
                               <Badge
@@ -1229,17 +1237,39 @@ export function FichadasView() {
                               </Badge>
                             )}
                           </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {novedad.estado !== 'pendiente' && novedad.modificadoPor && novedad.fechaModificacion ? (
+                              <>
+                                <div>{novedad.modificadoPor}</div>
+                                <div>
+                                  {new Date(novedad.fechaModificacion).toLocaleDateString("es-AR")} {new Date(novedad.fechaModificacion).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
+                                </div>
+                              </>
+                            ) : (
+                              <span className="text-muted-foreground/50">-</span>
+                            )}
+                          </TableCell>
                           <TableCell>
                             <div className="flex gap-1">
-                              {!novedad.aprobado && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
-                                  onClick={() => aprobarNovedad(novedad.id, "Admin")}
-                                >
-                                  <Check className="h-4 w-4" />
-                                </Button>
+                              {novedad.estado === 'pendiente' && (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                    onClick={() => gestionarEstadoNovedad(novedad.id, "aprobada", "Admin")}
+                                  >
+                                    <Check className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    onClick={() => gestionarEstadoNovedad(novedad.id, "rechazada", "Admin")}
+                                  >
+                                    <span>✕</span>
+                                  </Button>
+                                </>
                               )}
                               <Button
                                 variant="ghost"
