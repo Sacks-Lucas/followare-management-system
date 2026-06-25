@@ -465,8 +465,6 @@ export function EmpleadoFichadasView() {
                             <span className="text-muted-foreground/50">-</span>
                           )}
                         </TableCell>
-                          )}
-                        </TableCell>
                         <TableCell>
                           {justificativo ? (
                             <div className="flex items-center gap-2">
