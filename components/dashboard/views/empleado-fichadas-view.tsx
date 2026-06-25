@@ -118,7 +118,6 @@ export function EmpleadoFichadasView() {
     getNovedadesByEmployee,
     getTurnoById,
     addNovedad,
-    actualizarEstadoFichada,
     isLoaded,
   } = useLMSData()
 
@@ -329,20 +328,6 @@ export function EmpleadoFichadasView() {
     }
   }
 
-  const handleAprobarFichada = (row: EmpleadoRow) => {
-    if (!row.fichada) {
-      console.error("No hay fichada para aprobar")
-      return
-    }
-
-    try {
-      actualizarEstadoFichada(row.fichada.id, "ok")
-      setSuccessMessage("Fichada aprobada correctamente.")
-      setTimeout(() => setSuccessMessage(""), 3000)
-    } catch (error) {
-      console.error("Error al aprobar fichada:", error)
-    }
-  }
 
   if (!isLoaded) {
     return <div className="flex items-center justify-center h-64">Cargando...</div>
@@ -473,17 +458,6 @@ export function EmpleadoFichadasView() {
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-2">
-                            {row.fichadaEstado === "pendiente" && row.fichada ? (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleAprobarFichada(row)}
-                                title="Aprobar fichada"
-                              >
-                                <CheckCircle className="mr-2 h-4 w-4" />
-                                Aprobar
-                              </Button>
-                            ) : null}
                             {canUploadJustificativo(row) ? (
                               <>
                                 <input
